@@ -1,0 +1,178 @@
+---
+export type Props = {
+  axisTop: string;
+  axisBottom: string;
+  axisLeft: string;
+  axisRight: string;
+  quadrants: [string, string, string, string]; // top-left, top-right, bottom-left, bottom-right
+  dotTop: string; // e.g. "28%"
+  dotLeft: string; // e.g. "64%"
+  dotLabel: string;
+  ariaLabel: string;
+};
+
+const {
+  axisTop,
+  axisBottom,
+  axisLeft,
+  axisRight,
+  quadrants,
+  dotTop,
+  dotLeft,
+  dotLabel,
+  ariaLabel,
+} = Astro.props;
+
+const [q1, q2, q3, q4] = quadrants;
+---
+
+<div class="matrix-wrap">
+  <span class="axis-label axis-top mono" aria-hidden="true">{axisTop}</span>
+  <span class="axis-label axis-bottom mono" aria-hidden="true">{axisBottom}</span>
+  <span class="axis-label axis-left mono" aria-hidden="true">{axisLeft}</span>
+  <span class="axis-label axis-right mono" aria-hidden="true">{axisRight}</span>
+  <div class="matrix" role="img" aria-label={ariaLabel}>
+    <span class="quad-label q1" aria-hidden="true">{q1}</span>
+    <span class="quad-label q2" aria-hidden="true">{q2}</span>
+    <span class="quad-label q3" aria-hidden="true">{q3}</span>
+    <span class="quad-label q4" aria-hidden="true">{q4}</span>
+    <div class="dot" style={`top:${dotTop}; left:${dotLeft};`} aria-hidden="true"></div>
+    <span class="dot-label" style={`top:calc(${dotTop} - 6%); left:calc(${dotLeft} + 4%);`} aria-hidden="true">
+      {dotLabel}
+    </span>
+  </div>
+</div>
+
+<style>
+  .matrix-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+  }
+
+  .matrix {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--mist);
+    border: 1px solid #34406b;
+    border-radius: 4px;
+  }
+
+  .axis-label {
+    position: absolute;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    color: #8891ab;
+  }
+
+  .axis-top {
+    top: -1.4rem;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .axis-bottom {
+    bottom: -1.4rem;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* Rotated side labels overflow on narrow viewports — hidden below 641px,
+     reintroduced at >= 641px per the designer's responsive spec. */
+  .axis-left,
+  .axis-right {
+    display: none;
+  }
+
+  .matrix::before,
+  .matrix::after {
+    content: "";
+    position: absolute;
+    background: #34406b;
+  }
+
+  .matrix::before {
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+  }
+
+  .matrix::after {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+  }
+
+  .dot {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: var(--signal);
+    border-radius: 50%;
+    box-shadow: 0 0 0 6px rgba(200, 127, 10, 0.18);
+  }
+
+  .dot-label {
+    position: absolute;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #e0a94a;
+  }
+
+  .quad-label {
+    position: absolute;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.6rem;
+    color: #8891ab;
+    letter-spacing: 0.04em;
+  }
+
+  .q1 {
+    top: 0.6rem;
+    left: 0.7rem;
+  }
+
+  .q2 {
+    top: 0.6rem;
+    right: 0.7rem;
+    text-align: right;
+  }
+
+  .q3 {
+    bottom: 0.6rem;
+    left: 0.7rem;
+  }
+
+  .q4 {
+    bottom: 0.6rem;
+    right: 0.7rem;
+    text-align: right;
+  }
+
+  @media (min-width: 641px) {
+    .matrix-wrap {
+      max-width: none;
+    }
+
+    .axis-left,
+    .axis-right {
+      display: block;
+    }
+
+    .axis-left {
+      left: -3.6rem;
+      top: 50%;
+      transform: translateY(-50%) rotate(-90deg);
+    }
+
+    .axis-right {
+      right: -4.4rem;
+      top: 50%;
+      transform: translateY(-50%) rotate(-90deg);
+    }
+  }
+</style>

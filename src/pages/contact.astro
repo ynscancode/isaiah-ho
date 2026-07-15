@@ -1,0 +1,73 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Band from '../components/Band.astro';
+---
+
+<BaseLayout title="Contact" description="Get in touch with Isaiah Ho.">
+  <Band variant="ink" eyebrow="04 — Contact">
+    <h1>Contact</h1>
+    <p class="lede">The fastest way to reach me is email.</p>
+    <dl class="particulars">
+      <div>
+        <dt class="mono">Email</dt>
+        {/* TODO(isaiah): confirm you want this email address published live before shipping. */}
+        <dd><a href="mailto:isaiahho815@gmail.com">isaiahho815@gmail.com</a></dd>
+      </div>
+      <div>
+        <dt class="mono">LinkedIn</dt>
+        {/* TODO(isaiah): add your real LinkedIn URL — none provided yet, not invented. */}
+        <dd class="coming-soon">Coming soon</dd>
+      </div>
+      <div>
+        <dt class="mono">GitHub</dt>
+        {/* TODO(isaiah): add your real GitHub URL — none provided yet, not invented. */}
+        <dd class="coming-soon">Coming soon</dd>
+      </div>
+    </dl>
+  </Band>
+</BaseLayout>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.75rem;
+  }
+
+  .lede {
+    color: #c9ccd9;
+    font-size: 1.05rem;
+    margin: 0 0 2.5rem;
+  }
+
+  .particulars {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    margin: 0;
+  }
+
+  .particulars dt {
+    color: var(--signal);
+    margin-bottom: 0.3rem;
+  }
+
+  .particulars dd {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .particulars a {
+    color: var(--paper);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .particulars a:hover {
+    color: var(--signal);
+  }
+
+  .coming-soon {
+    color: #8891ab;
+    font-style: italic;
+  }
+</style>

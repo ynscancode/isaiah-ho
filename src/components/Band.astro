@@ -1,0 +1,61 @@
+---
+export type Props = {
+  variant?: 'ink' | 'paper';
+  divider?: boolean;
+  eyebrow?: string;
+  as?: 'section' | 'div';
+};
+
+const { variant = 'paper', divider = false, eyebrow, as: Tag = 'section' } = Astro.props;
+---
+
+<Tag class:list={['band', `band--${variant}`, { divider }]}>
+  <div class="band-inner">
+    {eyebrow && <span class="mono eyebrow">{eyebrow}</span>}
+    <slot />
+  </div>
+</Tag>
+
+<style>
+  .band {
+    --focus-ring: 2px solid var(--ink);
+  }
+
+  .band--ink {
+    --focus-ring: 2px solid var(--paper);
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .band--paper {
+    --focus-ring: 2px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .band-inner {
+    padding: 4.5rem 2.5rem;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .divider {
+    border-top: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    color: var(--signal-text);
+    display: block;
+    margin-bottom: 0.6rem;
+  }
+
+  .band--ink .eyebrow {
+    color: var(--signal);
+  }
+
+  @media (max-width: 640px) {
+    .band-inner {
+      padding: 3rem 1.5rem;
+    }
+  }
+</style>

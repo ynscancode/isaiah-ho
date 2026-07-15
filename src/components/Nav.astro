@@ -1,0 +1,82 @@
+---
+export type Props = {
+  activePath?: string;
+};
+
+const { activePath = Astro.url.pathname } = Astro.props;
+
+const links = [
+  { href: '/about', label: 'About' },
+  { href: '/projects', label: 'Projects' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/contact', label: 'Contact' },
+];
+
+const isActive = (href: string) =>
+  href === activePath || (href !== '/' && activePath.startsWith(href));
+---
+
+<nav>
+  <a class="brand" href="/">ISAIAH HO</a>
+  <ul>
+    {
+      links.map((link) => (
+        <li>
+          <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined}>
+            {link.label}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>
+
+<style>
+  nav {
+    --focus-ring: 2px solid var(--paper);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2.5rem;
+    background: var(--ink);
+    color: var(--paper);
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .brand {
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-decoration: none;
+    color: var(--paper);
+  }
+
+  ul {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    margin: 0;
+    padding: 0;
+  }
+
+  a {
+    color: var(--paper);
+    text-decoration: none;
+    font-size: 0.95rem;
+    opacity: 0.85;
+  }
+
+  a:hover {
+    opacity: 1;
+    color: var(--signal);
+  }
+
+  a[aria-current="page"] {
+    opacity: 1;
+    color: var(--signal);
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+  }
+</style>

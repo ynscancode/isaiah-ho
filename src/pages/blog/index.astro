@@ -1,0 +1,40 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Band from '../../components/Band.astro';
+import Card from '../../components/Card.astro';
+
+const allPosts = await getCollection('blog', ({ data }) => !data.draft);
+const posts = allPosts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
+---
+
+<BaseLayout title="Blog" description="Writing by Isaiah Ho on structured thinking, case work, and consulting.">
+  <Band variant="paper" eyebrow="03 — Latest writing">
+    <h1>Blog</h1>
+    {
+      posts.length > 0 ? (
+        <div class="cards">
+          {posts.map((post) => (
+            <Card
+              eyebrow={dateFormatter.format(post.data.date).toUpperCase()}
+              title={post.data.title}
+              body={post.data.description}
+              href={`/blog/${post.id}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p class="empty-state">No posts yet — check back soon.</p>
+      )
+    }
+  </Band>
+</BaseLayout>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+</style>

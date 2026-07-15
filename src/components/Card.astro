@@ -1,0 +1,56 @@
+---
+export type Props = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  href?: string;
+};
+
+const { eyebrow, title, body, href } = Astro.props;
+const Tag = href ? 'a' : 'div';
+---
+
+<Tag class="card" {...(href ? { href } : {})}>
+  <span class="mono card-eyebrow">{eyebrow}</span>
+  <h3>{title}</h3>
+  <p>{body}</p>
+</Tag>
+
+<style>
+  .card {
+    --focus-ring: 2px solid var(--ink);
+    display: block;
+    border: 1px solid var(--line);
+    padding: 1.6rem;
+    border-radius: 4px;
+    background: #fdfcfa;
+    text-decoration: none;
+    color: inherit;
+    height: 100%;
+  }
+
+  a.card {
+    transition: border-color 0.15s ease;
+  }
+
+  a.card:hover {
+    border-color: var(--signal);
+  }
+
+  .card-eyebrow {
+    color: var(--slate);
+    margin-bottom: 0.8rem;
+  }
+
+  .card h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.15rem;
+  }
+
+  .card p {
+    margin: 0;
+    color: var(--slate);
+    font-size: 0.95rem;
+    font-family: "Source Serif 4", serif;
+  }
+</style>

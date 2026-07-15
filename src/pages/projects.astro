@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Band from '../components/Band.astro';
+import Card from '../components/Card.astro';
+import { projects } from '../data/projects';
+---
+
+<BaseLayout
+  title="Projects"
+  description="Case competitions, research, and independent projects by Isaiah Ho."
+>
+  <Band variant="paper" eyebrow="02 — Selected work">
+    <h1>Projects</h1>
+    {
+      projects.length > 0 ? (
+        <div class="cards">
+          {projects.map((project) => (
+            <div id={project.slug}>
+              <Card
+                eyebrow={project.eyebrow}
+                title={project.title}
+                body={project.body}
+                href={project.href}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p class="empty-state">
+          {/* TODO(isaiah): add projects to src/data/projects.ts */}
+          Nothing published here yet — projects are on the way.
+        </p>
+      )
+    }
+  </Band>
+</BaseLayout>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+</style>

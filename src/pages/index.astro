@@ -1,0 +1,87 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../components/Hero.astro';
+import PositioningMatrix from '../components/PositioningMatrix.astro';
+import Band from '../components/Band.astro';
+import Card from '../components/Card.astro';
+import { projects } from '../data/projects';
+
+const selectedProjects = projects.slice(0, 2);
+
+const allPosts = await getCollection('blog', ({ data }) => !data.draft);
+const latestPosts = allPosts
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+  .slice(0, 2);
+
+const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
+---
+
+<BaseLayout
+  title="Home"
+  description="Isaiah Ho — business student at Singapore Management University building toward a career in strategy consulting. Writing, projects, and structured thinking applied to real problems."
+>
+  <Hero
+    eyebrow="SMU · Business · Strategy & Consulting"
+    lede="I'm Isaiah Ho, a business student at Singapore Management University building toward a career in strategy consulting. This is where I write, build, and think out loud."
+    primaryCta={{ label: 'View projects', href: '/projects' }}
+    ghostCta={{ label: 'Read the blog', href: '/blog' }}
+  >
+    Structured thinking,<br />applied to real problems.
+    <PositioningMatrix
+      slot="matrix"
+      axisTop="Data-driven"
+      axisBottom="Narrative-driven"
+      axisLeft="Exploratory"
+      axisRight="Structured"
+      quadrants={['Frameworks', 'Case method', 'Discovery', 'Storytelling']}
+      dotTop="28%"
+      dotLeft="64%"
+      dotLabel="Isaiah"
+      ariaLabel="Positioning matrix: structured, data-driven approach, placed in the Frameworks quadrant."
+    />
+  </Hero>
+
+  <Band variant="paper" eyebrow="02 — Selected work">
+    <h2>Projects</h2>
+    {
+      selectedProjects.length > 0 ? (
+        <div class="cards">
+          {selectedProjects.map((project) => (
+            <Card
+              eyebrow={project.eyebrow}
+              title={project.title}
+              body={project.body}
+              href={`/projects#${project.slug}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p class="empty-state">
+          {/* TODO(isaiah): add projects to src/data/projects.ts — this empty state renders until you do. */}
+          No projects yet — check back soon.
+        </p>
+      )
+    }
+  </Band>
+
+  <Band variant="paper" divider eyebrow="03 — Latest writing">
+    <h2>From the blog</h2>
+    {
+      latestPosts.length > 0 ? (
+        <div class="cards">
+          {latestPosts.map((post) => (
+            <Card
+              eyebrow={dateFormatter.format(post.data.date).toUpperCase()}
+              title={post.data.title}
+              body={post.data.description}
+              href={`/blog/${post.id}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p class="empty-state">No posts yet — check back soon.</p>
+      )
+    }
+  </Band>
+</BaseLayout>

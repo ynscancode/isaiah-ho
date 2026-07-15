@@ -1,0 +1,37 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer>
+  <span>&copy; {year} Isaiah Ho</span>
+  <span>
+    <a href="mailto:isaiahho815@gmail.com">isaiahho815@gmail.com</a>
+    {/* TODO(isaiah): add real LinkedIn/GitHub URLs once you have them, then swap these spans for <a> tags. */}
+    &middot; <span class="coming-soon">LinkedIn (coming soon)</span>
+    &middot; <span class="coming-soon">GitHub (coming soon)</span>
+  </span>
+</footer>
+
+<style>
+  footer {
+    --focus-ring: 2px solid var(--paper);
+    background: var(--ink);
+    color: #8891ab;
+    padding: 2rem 2.5rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  a {
+    color: #c9ccd9;
+  }
+
+  .coming-soon {
+    color: #6b7280;
+    font-style: italic;
+  }
+</style>

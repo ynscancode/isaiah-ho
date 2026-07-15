@@ -1,0 +1,134 @@
+/* Self-hosted fonts (see BaseLayout.astro props for per-page SEO/meta). */
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/source-serif-4/400.css";
+@import "@fontsource/source-serif-4/400-italic.css";
+@import "@fontsource/source-serif-4/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+/* Design tokens — see TEAM-BOARD.md ui-ux-designer-20260715T143000 for the
+   accessibility rationale behind --signal-text and the lightened labels. */
+:root {
+  --ink: #12182b;
+  --paper: #f5f3ee;
+  --signal: #c87f0a; /* large/non-text accents only — fails AA as text on paper */
+  --signal-text: #8a5a00; /* amber text/links on paper — passes AA (~5.55:1) */
+  --slate: #5b6472;
+  --line: #d8d3c7;
+  --mist: #202a45;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", "SF Mono", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: inherit;
+}
+
+/* Skip link: first focusable element, hidden until focused. */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -4rem;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0.7rem 1.1rem;
+  border-radius: 2px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  z-index: 200;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Focus rings: --focus-ring is set per band variant (Band.astro / Nav.astro)
+   so the outline always has sufficient contrast against its own background.
+   The amber halo is a supplementary decorative cue, not the compliance
+   mechanism (the outline is). */
+:focus-visible {
+  outline: var(--focus-ring, 2px solid var(--ink));
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(200, 127, 10, 0.35);
+  border-radius: 2px;
+}
+
+/* Shared grid for Card collections (projects, blog previews). */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.empty-state {
+  margin-top: 2rem;
+  padding: 2rem;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  color: var(--slate);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
