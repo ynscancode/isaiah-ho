@@ -41,6 +41,21 @@ body {
      reserving horizontal space in Hero.astro's .hero-matrix. This just stops
      any future out-of-flow element from spawning a page-wide scrollbar. */
   overflow-x: hidden;
+  /* Sticky footer: make the body a full-viewport-height flex column so
+     short-content pages (about/projects/contact/blog index, short posts)
+     still push the footer to the bottom of the viewport instead of leaving
+     it stranded mid-page. 100dvh is a progressive enhancement over 100vh
+     for mobile browsers whose UI chrome resizes the viewport. */
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main content area absorbs the slack in the flex column above, pushing
+   Footer (a sibling flex item) to the bottom on short pages. */
+#main-content {
+  flex: 1 0 auto;
 }
 
 h1,
