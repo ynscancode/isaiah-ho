@@ -4,6 +4,7 @@
 title: "Reading an SMU-X project like a client engagement"
 description: "Treating a school project like a real consulting deliverable."
 date: 2026-06-18
+tags: ["consulting", "smu", "case-study"]
 ---
 
 <!-- TODO(isaiah): replace this placeholder body with your real post. -->

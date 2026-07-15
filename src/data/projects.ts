@@ -15,6 +15,8 @@ export const projects: Project[] = [
     slug: 'market-entry-fnb',
     eyebrow: 'Case competition · 2025',
     title: 'Market entry strategy for a regional F&B chain',
+    // TODO(isaiah): "top 3 of 40 teams" is invented placeholder detail from the
+    // mockup copy, not a real result — replace or verify before this is real content.
     body: 'Led a 4-person team through a market-sizing and go-to-market recommendation, placing top 3 of 40 teams.',
   },
   {

@@ -81,7 +81,19 @@ const { eyebrow, lede, primaryCta, ghostCta } = Astro.props;
     color: var(--paper);
   }
 
-  @media (max-width: 640px) {
+  @media (min-width: 900px) {
+    /* The matrix's rotated axis-left/axis-right labels (PositioningMatrix.astro)
+       sit outside the matrix box at left:-3.6rem / right:-4.4rem. Reserve at
+       least that much room inside the matrix's own grid column so the labels
+       land inside the viewport instead of spilling past the hero's padding
+       (KB-0004: an out-of-flow/absolutely-positioned element isn't accounted
+       for in its parent's width, so its space must be reserved explicitly). */
+    .hero-matrix {
+      padding: 0 4.8rem 0 4rem;
+    }
+  }
+
+  @media (max-width: 899px) {
     .hero {
       grid-template-columns: 1fr;
       padding: 3rem 1.5rem 3.5rem;

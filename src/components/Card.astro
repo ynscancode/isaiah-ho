@@ -4,9 +4,10 @@ export type Props = {
   title: string;
   body: string;
   href?: string;
+  tags?: string[];
 };
 
-const { eyebrow, title, body, href } = Astro.props;
+const { eyebrow, title, body, href, tags = [] } = Astro.props;
 const Tag = href ? 'a' : 'div';
 ---
 
@@ -14,6 +15,13 @@ const Tag = href ? 'a' : 'div';
   <span class="mono card-eyebrow">{eyebrow}</span>
   <h3>{title}</h3>
   <p>{body}</p>
+  {tags.length > 0 && (
+    <ul class="mono card-tags">
+      {tags.map((tag) => (
+        <li>{tag}</li>
+      ))}
+    </ul>
+  )}
 </Tag>
 
 <style>
@@ -52,5 +60,18 @@ const Tag = href ? 'a' : 'div';
     color: var(--slate);
     font-size: 0.95rem;
     font-family: "Source Serif 4", serif;
+  }
+
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    list-style: none;
+    margin: 0.9rem 0 0;
+    padding: 0;
+  }
+
+  .card-tags li {
+    color: var(--signal-text);
   }
 </style>

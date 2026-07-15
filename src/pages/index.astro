@@ -38,7 +38,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
       dotTop="28%"
       dotLeft="64%"
       dotLabel="Isaiah"
-      ariaLabel="Positioning matrix: structured, data-driven approach, placed in the Frameworks quadrant."
+      ariaLabel="Positioning matrix: structured, data-driven approach, placed in the Case method quadrant."
     />
   </Hero>
 
@@ -76,6 +76,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
               title={post.data.title}
               body={post.data.description}
               href={`/blog/${post.id}`}
+              tags={post.data.tags}
             />
           ))}
         </div>

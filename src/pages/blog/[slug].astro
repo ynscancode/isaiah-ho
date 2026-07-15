@@ -25,6 +25,13 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', {
   <Band variant="paper">
     <a class="back-link" href="/blog">&larr; Back to blog</a>
     <span class="mono post-date">{dateFormatter.format(post.data.date)}</span>
+    {post.data.tags.length > 0 && (
+      <ul class="tag-list">
+        {post.data.tags.map((tag) => (
+          <li class="mono tag">{tag}</li>
+        ))}
+      </ul>
+    )}
     <h1>{post.data.title}</h1>
     <div class="prose">
       <Content />
@@ -50,6 +57,22 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', {
     color: var(--signal-text);
     display: block;
     margin-bottom: 0.6rem;
+  }
+
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0 0 1.2rem;
+    padding: 0;
+  }
+
+  .tag {
+    color: var(--signal-text);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 0.15rem 0.5rem;
   }
 
   h1 {

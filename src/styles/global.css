@@ -37,6 +37,10 @@ body {
   font-family: "Source Serif 4", "Iowan Old Style", Georgia, serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /* Defensive guard only — the real fix for the matrix axis-label overflow is
+     reserving horizontal space in Hero.astro's .hero-matrix. This just stops
+     any future out-of-flow element from spawning a page-wide scrollbar. */
+  overflow-x: hidden;
 }
 
 h1,

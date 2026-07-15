@@ -22,6 +22,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
               title={post.data.title}
               body={post.data.description}
               href={`/blog/${post.id}`}
+              tags={post.data.tags}
             />
           ))}
         </div>
