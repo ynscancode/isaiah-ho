@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Band from '../components/Band.astro';
+import Card from '../components/Card.astro';
+import { experience } from '../data/experience';
+---
+
+<BaseLayout
+  title="Experience"
+  description="Work history and leadership experience by Isaiah Ho."
+>
+  <Band variant="paper" eyebrow="02 — Work history">
+    <h1>Experience</h1>
+    {
+      experience.length > 0 ? (
+        <div class="cards">
+          {experience.map((exp) => (
+            <div id={exp.slug}>
+              <Card
+                eyebrow={exp.eyebrow}
+                title={exp.title}
+                body={exp.body}
+                href={exp.href}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p class="empty-state">
+          {/* TODO(isaiah): add experience to src/data/experience.ts */}
+          Nothing published here yet — experience is on the way.
+        </p>
+      )
+    }
+  </Band>
+</BaseLayout>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+</style>

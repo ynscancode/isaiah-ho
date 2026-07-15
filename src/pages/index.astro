@@ -24,8 +24,8 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
   <Hero
     eyebrow="SMU · Business · Strategy & Consulting"
     lede="I'm Isaiah Ho, a business student at Singapore Management University building toward a career in strategy consulting. This is where I write, build, and think out loud."
-    primaryCta={{ label: 'View projects', href: '/projects' }}
-    ghostCta={{ label: 'Read the blog', href: '/blog' }}
+    primaryCta={{ label: 'Experience', href: '/experience' }}
+    ghostCta={{ label: 'View projects', href: '/projects' }}
   >
     Structured thinking,<br />applied to real problems.
     <PositioningMatrix
@@ -42,7 +42,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     />
   </Hero>
 
-  <Band variant="paper" eyebrow="02 — Selected work">
+  <Band variant="paper" eyebrow="03 — Selected work">
     <h2>Projects</h2>
     {
       selectedProjects.length > 0 ? (
@@ -65,7 +65,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     }
   </Band>
 
-  <Band variant="paper" divider eyebrow="03 — Latest writing">
+  <Band variant="paper" divider eyebrow="04 — Latest writing">
     <h2>From the blog</h2>
     {
       latestPosts.length > 0 ? (
