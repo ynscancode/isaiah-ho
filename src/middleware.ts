@@ -4,6 +4,7 @@ import {
   verifySessionToken,
   verifyCsrfToken,
 } from './lib/session';
+import { optionalEnv } from './lib/env';
 
 // Public, unauthenticated entry points into the OAuth flow. Everything else
 // under /api and every /edit/** route is privileged.
@@ -45,7 +46,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return next();
   }
 
-  const secret = import.meta.env.SESSION_SECRET as string | undefined;
+  // Read via the shared env helper (process.env at runtime, with a
+  // dev-only import.meta.env[name] fallback) rather than a literal
+  // `import.meta.env.SESSION_SECRET` — a literal is what Vite statically
+  // inlines into the built server bundle, which would bake the real
+  // secret into deployed output. optionalEnv's fallback default of ''
+  // is falsy, matching the prior `undefined` behavior for the checks below.
+  const secret = optionalEnv('SESSION_SECRET', '') || undefined;
   const rawSession = cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = secret ? await verifySessionToken(rawSession, secret) : null;
   locals.session = session;
