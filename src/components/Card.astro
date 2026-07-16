@@ -5,16 +5,52 @@ export type Props = {
   body: string;
   href?: string;
   tags?: string[];
+  /** Editor-only, defaults false — see Hero.astro's comment for the
+   * public-build-is-byte-identical rationale. When true the card is forced
+   * to a <div> (never <a>) so it isn't a live navigation target while being
+   * edited, and gains contenteditable text fields, an "edit link" button
+   * for `href`, and a remove-entry button. `editablePrefix` is the entry's
+   * stable id (not its array index — see EditCollection.astro for why:
+   * ids survive another entry being removed, positions don't) used to
+   * build each data-editable path as `${editablePrefix}.<field>`. */
+  editable?: boolean;
+  editablePrefix?: string;
+  removable?: boolean;
 };
 
-const { eyebrow, title, body, href, tags = [] } = Astro.props;
-const Tag = href ? 'a' : 'div';
+const { eyebrow, title, body, href, tags = [], editable = false, editablePrefix = '', removable = false } = Astro.props;
+const Tag = editable ? 'div' : href ? 'a' : 'div';
 ---
 
-<Tag class="card" {...(href ? { href } : {})}>
-  <span class="mono card-eyebrow">{eyebrow}</span>
-  <h3>{title}</h3>
-  <p>{body}</p>
+<Tag
+  class="card"
+  style={editable ? 'position:relative' : undefined}
+  {...(!editable && href ? { href } : {})}
+>
+  {editable && removable && (
+    <button type="button" class="card-remove-btn" data-remove-entry={editablePrefix} aria-label={`Remove ${title || 'entry'}`}>
+      Remove
+    </button>
+  )}
+  <span
+    class="mono card-eyebrow"
+    data-editable={editable ? `${editablePrefix}.eyebrow` : undefined}
+    contenteditable={editable ? 'true' : undefined}
+  >{eyebrow}</span>
+  <h3
+    data-editable={editable ? `${editablePrefix}.title` : undefined}
+    contenteditable={editable ? 'true' : undefined}
+  >{title}</h3>
+  <p
+    data-editable={editable ? `${editablePrefix}.body` : undefined}
+    contenteditable={editable ? 'true' : undefined}
+  >{body}</p>
+  {editable && (
+    <p class="mono card-href-field">
+      link: <span data-editable-href-value={`${editablePrefix}.href`}>{href || '(none)'}</span>
+      <button type="button" class="edit-href-btn" data-editable-href={`${editablePrefix}.href`} data-nullable="true">edit link</button>
+    </p>
+  )}
   {tags.length > 0 && (
     <ul class="mono card-tags">
       {tags.map((tag) => (

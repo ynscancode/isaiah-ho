@@ -1,0 +1,153 @@
+---
+// The inline WYSIWYG editor shell — tech-lead-20260715T192159 frontend
+// contract, section 5. prerender=false so this can read Astro.locals.session
+// (populated by src/middleware.ts) at request time; middleware already
+// returns a generic 404 for any /edit/** request without a valid session,
+// but this route re-checks defensively so the page itself never assumes it
+// was reached legitimately (defense in depth, same generic response either
+// way — indistinguishable from a genuinely missing route per KB-0007).
+//
+// URL scheme (mirrors the public site's own routes):
+//   /edit                -> home (hero)
+//   /edit/about           -> about
+//   /edit/contact         -> contact
+//   /edit/projects        -> projects collection
+//   /edit/experience      -> experience collection
+//   /edit/blog             -> blog post list (add/remove)
+//   /edit/blog/new          -> create a new post
+//   /edit/blog/<slug>       -> edit an existing post
+export const prerender = false;
+
+import { getCollection, getEntry } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import EditorHarness from '../../components/EditorHarness.astro';
+import EditHome from '../../components/edit/EditHome.astro';
+import EditAbout from '../../components/edit/EditAbout.astro';
+import EditContact from '../../components/edit/EditContact.astro';
+import EditCollection from '../../components/edit/EditCollection.astro';
+import EditBlogList from '../../components/edit/EditBlogList.astro';
+import EditBlogPost from '../../components/edit/EditBlogPost.astro';
+
+function notFound(): Response {
+  return new Response('Not found', {
+    status: 404,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  });
+}
+
+if (!Astro.locals.session) {
+  return notFound();
+}
+
+const rawPath = Astro.params.path ?? '';
+const segments = rawPath.split('/').filter(Boolean);
+const [area, sub] = segments;
+
+let pageTitle = 'Edit';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- discriminated
+// by `view`; the branches above are the sole producers, each shaped to match
+// the props of the editor component it's handed to below.
+let body: any = null;
+
+if (segments.length === 0) {
+  const homeEntry = await getEntry('site', 'home');
+  const hero = homeEntry?.data.hero;
+  if (!hero) return notFound();
+  pageTitle = 'Edit — Home';
+  body = { view: 'home', hero };
+} else if (area === 'about' && !sub) {
+  const aboutEntry = await getEntry('site', 'about');
+  if (!aboutEntry) return notFound();
+  pageTitle = 'Edit — About';
+  body = {
+    view: 'about',
+    about: { lede: aboutEntry.data.lede ?? '', paragraphs: aboutEntry.data.paragraphs ?? [] },
+  };
+} else if (area === 'contact' && !sub) {
+  const contactEntry = await getEntry('site', 'contact');
+  if (!contactEntry) return notFound();
+  pageTitle = 'Edit — Contact';
+  body = {
+    view: 'contact',
+    contact: {
+      lede: contactEntry.data.lede ?? '',
+      email: contactEntry.data.email ?? null,
+      linkedin: contactEntry.data.linkedin ?? null,
+      github: contactEntry.data.github ?? null,
+    },
+  };
+} else if (area === 'projects' && !sub) {
+  const entries = await getCollection('projects');
+  pageTitle = 'Edit — Projects';
+  body = { view: 'projects', entries: entries.map((e) => e.data) };
+} else if (area === 'experience' && !sub) {
+  const entries = await getCollection('experience');
+  pageTitle = 'Edit — Experience';
+  body = { view: 'experience', entries: entries.map((e) => e.data) };
+} else if (area === 'blog' && !sub) {
+  const posts = await getCollection('blog');
+  const sorted = posts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+  pageTitle = 'Edit — Blog';
+  body = {
+    view: 'blog-list',
+    posts: sorted.map((p) => ({
+      id: p.id,
+      title: p.data.title,
+      description: p.data.description,
+      date: p.data.date,
+      tags: p.data.tags,
+      draft: p.data.draft,
+    })),
+  };
+} else if (area === 'blog' && sub === 'new') {
+  pageTitle = 'Edit — New blog post';
+  body = {
+    view: 'blog-post',
+    isNew: true,
+    post: {
+      slug: '',
+      title: '',
+      description: '',
+      date: new Date().toISOString().slice(0, 10),
+      draft: true,
+      tags: [],
+      body: '',
+    },
+  };
+} else if (area === 'blog' && sub) {
+  const postEntry = await getEntry('blog', sub);
+  if (!postEntry) return notFound();
+  pageTitle = `Edit — ${postEntry.data.title}`;
+  body = {
+    view: 'blog-post',
+    isNew: false,
+    post: {
+      slug: postEntry.id,
+      title: postEntry.data.title,
+      description: postEntry.data.description,
+      date: postEntry.data.date.toISOString().slice(0, 10),
+      draft: postEntry.data.draft,
+      tags: postEntry.data.tags,
+      body: postEntry.body ?? '',
+    },
+  };
+} else {
+  return notFound();
+}
+---
+
+<BaseLayout title={pageTitle} description="Isaiah Ho — content editor (private).">
+  {body?.view === 'home' && <EditHome hero={body.hero} />}
+  {body?.view === 'about' && <EditAbout about={body.about} />}
+  {body?.view === 'contact' && <EditContact contact={body.contact} />}
+  {body?.view === 'projects' && (
+    <EditCollection area="projects" eyebrow="03 — Selected work" entries={body.entries} />
+  )}
+  {body?.view === 'experience' && (
+    <EditCollection area="experience" eyebrow="02 — Work history" entries={body.entries} />
+  )}
+  {body?.view === 'blog-list' && <EditBlogList posts={body.posts} />}
+  {body?.view === 'blog-post' && <EditBlogPost post={body.post} isNew={body.isNew} />}
+
+  <EditorHarness slot="editor-toolbar" />
+</BaseLayout>

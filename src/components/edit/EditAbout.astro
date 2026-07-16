@@ -1,0 +1,98 @@
+---
+import Band from '../Band.astro';
+
+export type Props = {
+  about: { lede: string; paragraphs: string[] };
+};
+
+const { about } = Astro.props;
+---
+
+<Band variant="ink" eyebrow="01 — About" as="div">
+  <h1>About</h1>
+  <div class="prose" data-editable-area="about">
+    <p class="lede" data-editable="lede" contenteditable="true">{about.lede}</p>
+    {about.paragraphs.map((paragraph, index) => (
+      <p data-editable={`paragraphs.${index}`} contenteditable="true">{paragraph}</p>
+    ))}
+  </div>
+  <p class="editor-note">
+    Editing existing paragraphs only — About is a single editable block, not an
+    add/remove collection, per product-owner-20260716T000000.
+  </p>
+</Band>
+
+<script>
+  import { debounce, saveArea, setPath, statusLabel } from '../../lib/editor/client';
+  import type { SaveStatus } from '../../lib/editor/client';
+
+  const AREA = 'about';
+  const container = document.querySelector<HTMLElement>('[data-editable-area="about"]');
+  if (container) {
+    const paragraphs: string[] = [];
+    container.querySelectorAll<HTMLElement>('[data-editable^="paragraphs."]').forEach((el) => {
+      const idx = Number(el.getAttribute('data-editable')?.split('.')[1] ?? '0');
+      paragraphs[idx] = el.textContent ?? '';
+    });
+    const working: { lede: string; paragraphs: string[] } = {
+      lede: container.querySelector<HTMLElement>('[data-editable="lede"]')?.textContent ?? '',
+      paragraphs,
+    };
+
+    let status: SaveStatus = 'idle';
+    function reportStatus(next: SaveStatus) {
+      status = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
+      );
+    }
+
+    async function doSave() {
+      reportStatus('saving');
+      const result = await saveArea(AREA, working);
+      reportStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleSave = debounce(doSave, 1500);
+
+    container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
+      el.addEventListener('input', () => {
+        const path = el.getAttribute('data-editable');
+        if (!path) return;
+        setPath(working as unknown as Record<string, unknown>, path, el.textContent ?? '');
+        reportStatus('dirty');
+        scheduleSave();
+      });
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void doSave();
+    });
+  }
+</script>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 2rem;
+  }
+
+  .prose {
+    max-width: 65ch;
+  }
+
+  .lede {
+    font-size: 1.1rem;
+    color: #c9ccd9;
+  }
+
+  .prose p {
+    margin: 0 0 1.2rem;
+  }
+
+  .editor-note {
+    max-width: 65ch;
+    font-size: 0.85rem;
+    color: #8891ab;
+  }
+</style>

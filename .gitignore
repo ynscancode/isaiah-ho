@@ -31,3 +31,5 @@ pnpm-debug.log*
 
 .vercel
 .env*
+# but keep the placeholder-only example file tracked (contains no real secrets)
+!.env.local.example

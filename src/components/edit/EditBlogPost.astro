@@ -1,0 +1,200 @@
+---
+import Band from '../Band.astro';
+
+export type BlogPostData = {
+  slug: string;
+  title: string;
+  description: string;
+  date: string; // yyyy-mm-dd, for <input type="date">
+  draft: boolean;
+  tags: string[];
+  body: string;
+};
+
+export type Props = {
+  post: BlogPostData;
+  isNew: boolean;
+};
+
+const { post, isNew } = Astro.props;
+---
+
+<Band variant="paper" as="div">
+  <a class="back-link" href="/edit/blog">&larr; Back to blog list</a>
+  <h1>{isNew ? 'New blog post' : `Editing: ${post.title}`}</h1>
+
+  <div data-editable-area="blog" data-is-new={isNew ? 'true' : 'false'} data-slug={post.slug}>
+    <label class="editor-field-label mono" for="post-title">Title</label>
+    <input id="post-title" class="editor-input" type="text" value={post.title} data-editable="title" />
+
+    <label class="editor-field-label mono" for="post-description">Description</label>
+    <input id="post-description" class="editor-input" type="text" value={post.description} data-editable="description" />
+
+    <div class="editor-inline-controls">
+      <div>
+        <label class="editor-field-label mono" for="post-date">Date</label>
+        <input id="post-date" class="editor-input" type="date" value={post.date} data-editable="date" />
+      </div>
+      <div>
+        <label class="editor-field-label mono" for="post-draft">
+          <input id="post-draft" type="checkbox" checked={post.draft} data-editable="draft" /> Draft (unpublished)
+        </label>
+      </div>
+    </div>
+
+    <label class="editor-field-label mono" for="post-tags">Tags (comma-separated)</label>
+    <input id="post-tags" class="editor-input" type="text" value={post.tags.join(', ')} data-editable="tags" />
+
+    <label class="editor-field-label mono" for="post-body">Body (markdown)</label>
+    <textarea id="post-body" class="editor-textarea" data-editable="body">{post.body}</textarea>
+
+    {!isNew && (
+      <p class="editor-note">
+        Slug <code>{post.slug}</code> is fixed — editing the title does not change the post's URL.
+      </p>
+    )}
+    {isNew && (
+      <p class="editor-note">
+        The URL slug is generated from the title the first time you save, then stays fixed.
+      </p>
+    )}
+  </div>
+</Band>
+
+<script define:vars={{ post, isNew }}>
+  window.__editorSeed = window.__editorSeed || {};
+  window.__editorSeed.blogPost = { post, isNew };
+</script>
+
+<script>
+  import { debounce, saveArea, slugify, statusLabel } from '../../lib/editor/client';
+  import type { SaveStatus } from '../../lib/editor/client';
+  import type { BlogPostData } from './EditBlogPost.astro';
+
+  const container = document.querySelector<HTMLElement>('[data-editable-area="blog"]');
+  if (container) {
+    const seed = (window as unknown as { __editorSeed: { blogPost: { post: BlogPostData; isNew: boolean } } })
+      .__editorSeed.blogPost;
+
+    let working: BlogPostData = { ...seed.post };
+    let isNew = seed.isNew;
+    let slugLocked = !isNew;
+    // The slug this post is addressed by. Undefined only until the first
+    // successful save of a brand-new post; after that (whether this session
+    // started as new-and-just-created, or was an edit from the start) it's
+    // fixed to the persisted slug and only ever reassigned to keep tracking
+    // that same value post-save, never to a user-edited one. Sent as
+    // `originalSlug` on every save once known, so the server can reject a
+    // slug change instead of silently creating an orphaned file (see
+    // src/pages/api/content/[area].ts trust-boundary check).
+    let originalSlug: string | undefined = isNew ? undefined : seed.post.slug;
+
+    let status: SaveStatus = 'idle';
+    function reportStatus(next: SaveStatus) {
+      status = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
+      );
+    }
+
+    async function doSave() {
+      if (!working.title.trim()) {
+        reportStatus('error');
+        return;
+      }
+      if (!slugLocked) {
+        working.slug = slugify(working.title);
+      }
+      reportStatus('saving');
+      const payload = originalSlug !== undefined ? { ...working, originalSlug } : working;
+      const result = await saveArea('blog', payload);
+      if (result.ok) {
+        slugLocked = true;
+        originalSlug = working.slug;
+        if (isNew) {
+          isNew = false;
+          // Adopt the now-fixed URL so a page refresh / bookmark points at
+          // the real post instead of /edit/blog/new.
+          window.history.replaceState(null, '', `/edit/blog/${working.slug}`);
+        }
+      }
+      reportStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleSave = debounce(doSave, 1500);
+
+    const titleEl = document.getElementById('post-title') as HTMLInputElement;
+    const descEl = document.getElementById('post-description') as HTMLInputElement;
+    const dateEl = document.getElementById('post-date') as HTMLInputElement;
+    const draftEl = document.getElementById('post-draft') as HTMLInputElement;
+    const tagsEl = document.getElementById('post-tags') as HTMLInputElement;
+    const bodyEl = document.getElementById('post-body') as HTMLTextAreaElement;
+
+    titleEl.addEventListener('input', () => {
+      working.title = titleEl.value;
+      reportStatus('dirty');
+      scheduleSave();
+    });
+    descEl.addEventListener('input', () => {
+      working.description = descEl.value;
+      reportStatus('dirty');
+      scheduleSave();
+    });
+    dateEl.addEventListener('input', () => {
+      working.date = dateEl.value;
+      reportStatus('dirty');
+      scheduleSave();
+    });
+    draftEl.addEventListener('change', () => {
+      working.draft = draftEl.checked;
+      reportStatus('dirty');
+      scheduleSave();
+    });
+    tagsEl.addEventListener('input', () => {
+      working.tags = tagsEl.value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+      reportStatus('dirty');
+      scheduleSave();
+    });
+    bodyEl.addEventListener('input', () => {
+      working.body = bodyEl.value;
+      reportStatus('dirty');
+      scheduleSave();
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void doSave();
+    });
+  }
+</script>
+
+<style>
+  h1 {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    margin: 0.5rem 0 1.5rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    color: var(--signal-text);
+    text-decoration: none;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.9rem;
+  }
+
+  .back-link:hover {
+    text-decoration: underline;
+  }
+
+  .editor-note {
+    margin-top: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--slate);
+  }
+
+  .editor-note code {
+    font-family: "IBM Plex Mono", monospace;
+  }
+</style>

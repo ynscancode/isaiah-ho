@@ -1,0 +1,311 @@
+---
+// The one client island for the whole /edit surface (tech-lead-20260715T192159
+// frontend contract, section 5). Renders the fixed save/preview/publish/logout
+// toolbar and owns the styling for every editor-only affordance added to
+// Hero.astro / Card.astro (edit-link buttons, remove buttons, contenteditable
+// outlines) via :global() selectors — kept OUT of those shared components'
+// own <style> blocks on purpose so public pages' compiled CSS never grows a
+// single byte from this feature. This component is only ever imported by
+// src/pages/edit/[...path].astro (prerender=false, session-gated).
+---
+
+<div id="editor-toolbar" class="editor-toolbar" role="region" aria-label="Content editor controls">
+  <div class="editor-toolbar-status">
+    <strong>Editing draft</strong>
+    <span id="editor-status-text" data-status="idle">No changes</span>
+  </div>
+  <div class="editor-toolbar-actions">
+    <button type="button" id="editor-save-btn" class="editor-btn editor-btn-primary">Save to draft</button>
+    <button type="button" id="editor-preview-btn" class="editor-btn">Preview</button>
+    <button type="button" id="editor-publish-btn" class="editor-btn editor-btn-publish">Publish</button>
+    <button type="button" id="editor-logout-btn" class="editor-btn editor-btn-ghost">Log out</button>
+  </div>
+  <div id="editor-message" class="editor-toolbar-message" role="status" aria-live="polite"></div>
+</div>
+
+<style is:global>
+  /* Reserve room so the fixed toolbar never covers the footer's content;
+     applied only on /edit pages since this stylesheet is only ever bundled
+     there. */
+  body:has(#editor-toolbar) {
+    padding-bottom: 5.5rem;
+  }
+
+  .editor-toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 500;
+    background: var(--ink, #12182b);
+    color: var(--paper, #f5f3ee);
+    border-top: 1px solid #3a4468;
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.5rem;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.85rem;
+  }
+
+  .editor-toolbar-status {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+
+  .editor-toolbar-status strong {
+    font-size: 0.8rem;
+  }
+
+  #editor-status-text[data-status="dirty"] {
+    color: #f0c987;
+  }
+  #editor-status-text[data-status="saving"] {
+    color: #c9ccd9;
+  }
+  #editor-status-text[data-status="saved"] {
+    color: #7fd6a0;
+  }
+  #editor-status-text[data-status="error"] {
+    color: #ff9c9c;
+  }
+
+  .editor-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .editor-btn {
+    font-family: inherit;
+    font-size: 0.82rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: 2px;
+    border: 1px solid #5f6990;
+    background: transparent;
+    color: var(--paper, #f5f3ee);
+    cursor: pointer;
+  }
+
+  .editor-btn:hover {
+    border-color: var(--signal, #c87f0a);
+  }
+
+  .editor-btn-primary {
+    background: var(--signal, #c87f0a);
+    color: var(--ink, #12182b);
+    border-color: var(--signal, #c87f0a);
+    font-weight: 600;
+  }
+
+  .editor-btn-publish {
+    border-color: #7fd6a0;
+    color: #7fd6a0;
+  }
+
+  .editor-btn-ghost {
+    opacity: 0.8;
+  }
+
+  .editor-toolbar-message {
+    flex-basis: 100%;
+    font-size: 0.78rem;
+    color: #c9ccd9;
+  }
+
+  .editor-toolbar-message a {
+    color: var(--signal, #c87f0a);
+  }
+
+  /* --- Editor-only affordances rendered inside Hero.astro / Card.astro --- */
+
+  [contenteditable="true"] {
+    outline: 1px dashed #8891ab;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  [contenteditable="true"]:focus {
+    outline: 2px solid var(--signal, #c87f0a);
+  }
+
+  .cta-edit-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .edit-href-btn {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: transparent;
+    border: 1px solid currentColor;
+    color: inherit;
+    opacity: 0.75;
+    padding: 0.2rem 0.45rem;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .edit-href-btn:hover {
+    opacity: 1;
+  }
+
+  .card-remove-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #fdfcfa;
+    border: 1px solid #c0392b;
+    color: #c0392b;
+    padding: 0.2rem 0.5rem;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .card-href-field {
+    margin: 0.8rem 0 0;
+    font-size: 0.68rem;
+    color: var(--slate, #5b6472);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .editor-add-btn {
+    margin-top: 1.5rem;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.9rem;
+    padding: 0.7rem 1.2rem;
+    border: 1px dashed var(--slate, #5b6472);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .editor-add-btn:hover {
+    border-color: var(--signal, #c87f0a);
+    color: var(--signal-text, #8a5a00);
+  }
+
+  .editor-field-label {
+    display: block;
+    margin: 1.5rem 0 0.4rem;
+  }
+
+  .editor-input {
+    font-family: inherit;
+    font-size: 1rem;
+    width: 100%;
+    max-width: 40rem;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--line, #d8d3c7);
+    border-radius: 2px;
+    background: #fff;
+    color: inherit;
+  }
+
+  .editor-textarea {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    width: 100%;
+    max-width: 70ch;
+    min-height: 16rem;
+    padding: 1rem;
+    border: 1px solid var(--line, #d8d3c7);
+    border-radius: 4px;
+    background: #fdfcfa;
+  }
+
+  .editor-inline-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin: 0.4rem 0 0;
+  }
+</style>
+
+<script>
+  import {
+    fetchPreview,
+    logoutAndRedirect,
+    publishDraft,
+  } from '../lib/editor/client';
+
+  const statusText = document.getElementById('editor-status-text');
+  const message = document.getElementById('editor-message');
+  const saveBtn = document.getElementById('editor-save-btn');
+  const previewBtn = document.getElementById('editor-preview-btn');
+  const publishBtn = document.getElementById('editor-publish-btn');
+  const logoutBtn = document.getElementById('editor-logout-btn');
+
+  function setMessage(text: string) {
+    if (message) message.textContent = text;
+  }
+
+  // Views (EditHome/EditAbout/etc.) update this element's data-status /
+  // textContent directly and listen for `editor:save-all`.
+  saveBtn?.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('editor:save-all'));
+  });
+
+  previewBtn?.addEventListener('click', async () => {
+    setMessage('Fetching preview…');
+    const result = await fetchPreview();
+    if (!result) {
+      setMessage('No draft yet — save a change first, then try Preview again.');
+      return;
+    }
+    setMessage('');
+    if (message) {
+      const link = document.createElement('a');
+      link.href = result.previewUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = `Preview: ${result.previewUrl}`;
+      message.appendChild(link);
+    }
+  });
+
+  publishBtn?.addEventListener('click', async () => {
+    if (!window.confirm('Publish the current draft to the live site?')) return;
+    setMessage('Publishing…');
+    const result = await publishDraft();
+    if (result.conflict) {
+      setMessage('Publish failed: the draft has a merge conflict with master and needs manual resolution.');
+      return;
+    }
+    if (!result.ok) {
+      setMessage('Publish failed. Check the network tab / server logs.');
+      return;
+    }
+    setMessage('Published. The live site will update shortly once the deploy finishes.');
+  });
+
+  logoutBtn?.addEventListener('click', () => {
+    void logoutAndRedirect();
+  });
+
+  // Global rollup: every view's script dispatches `editor:area-status` so the
+  // toolbar can show the worst-case status across all areas on the page
+  // (in practice there is exactly one editable area per /edit/* route).
+  window.addEventListener('editor:area-status', (event) => {
+    const detail = (event as CustomEvent<{ status: string; label: string }>).detail;
+    if (!statusText || !detail) return;
+    statusText.textContent = detail.label;
+    statusText.dataset.status = detail.status;
+  });
+</script>

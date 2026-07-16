@@ -168,6 +168,22 @@ export const POST: APIRoute = async ({ params, request }) => {
     const parsed = blogPostBodySchema.safeParse(rawBody);
     if (!parsed.success) return badRequest('validation_failed');
 
+    // Trust-boundary invariant: blog slugs are immutable once a post exists
+    // (PO acceptance criterion 5). The shipped client enforces this by
+    // locking the field in the UI, but that's client-side only and is
+    // bypassable with a direct POST — same class of gap as the headlineHtml
+    // XSS (security-engineer B1): the real enforcement has to live here.
+    // `originalSlug` is only ever sent for an edit of an existing post (see
+    // schemas.ts). If it's present, the request MUST target the same slug
+    // it was addressed for, and that post must actually exist — otherwise a
+    // changed slug would silently write a new file and leave the old one
+    // behind as an orphan (KB-0014) instead of erroring. A create (no
+    // `originalSlug`) is also refused if a post already exists at that slug,
+    // so a "create" call can never silently overwrite an unrelated post.
+    if (parsed.data.originalSlug !== undefined && parsed.data.originalSlug !== parsed.data.slug) {
+      return badRequest('slug_immutable');
+    }
+
     const path = `${BLOG_DIR}${parsed.data.slug}.md`;
     // Defense in depth beyond the slug regex: refuse anything that would
     // resolve outside the blog directory.
@@ -176,6 +192,17 @@ export const POST: APIRoute = async ({ params, request }) => {
     }
 
     const existing = await getFileOnBranch(token, ref, path, branch);
+    if (parsed.data.originalSlug !== undefined && !existing) {
+      // Client claimed this was an edit of an existing post, but no file is
+      // there to edit — reject rather than silently falling back to create.
+      return badRequest('not_found');
+    }
+    if (parsed.data.originalSlug === undefined && existing) {
+      // Client claimed this was a new post, but a file already exists at
+      // that slug — reject rather than silently overwriting it.
+      return badRequest('slug_conflict');
+    }
+
     const markdown = buildBlogMarkdown(parsed.data);
     const { commitSha } = await putFileOnBranch(token, ref, {
       path,
