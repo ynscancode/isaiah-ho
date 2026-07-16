@@ -1,13 +1,16 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Hero from '../components/Hero.astro';
 import PositioningMatrix from '../components/PositioningMatrix.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
-import { projects } from '../data/projects';
 
-const selectedProjects = projects.slice(0, 2);
+const allProjects = await getCollection('projects');
+const selectedProjects = allProjects.slice(0, 2);
+
+const homeEntry = await getEntry('site', 'home');
+const hero = homeEntry!.data.hero!;
 
 const allPosts = await getCollection('blog', ({ data }) => !data.draft);
 const latestPosts = allPosts
@@ -22,12 +25,12 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
   description="Isaiah Ho — business student at Singapore Management University building toward a career in strategy consulting. Writing, projects, and structured thinking applied to real problems."
 >
   <Hero
-    eyebrow="SMU · Business · Strategy & Consulting"
-    lede="I'm Isaiah Ho, a business student at Singapore Management University building toward a career in strategy consulting. This is where I write, build, and think out loud."
-    primaryCta={{ label: 'Experience', href: '/experience' }}
-    ghostCta={{ label: 'View projects', href: '/projects' }}
+    eyebrow={hero.eyebrow}
+    headlineHtml={hero.headlineHtml}
+    lede={hero.lede}
+    primaryCta={hero.primaryCta}
+    ghostCta={hero.ghostCta}
   >
-    Structured thinking,<br />applied to real problems.
     <PositioningMatrix
       slot="matrix"
       axisTop="Data-driven"
@@ -49,16 +52,16 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
         <div class="cards">
           {selectedProjects.map((project) => (
             <Card
-              eyebrow={project.eyebrow}
-              title={project.title}
-              body={project.body}
-              href={`/projects#${project.slug}`}
+              eyebrow={project.data.eyebrow}
+              title={project.data.title}
+              body={project.data.body}
+              href={`/projects#${project.data.slug}`}
             />
           ))}
         </div>
       ) : (
         <p class="empty-state">
-          {/* TODO(isaiah): add projects to src/data/projects.ts — this empty state renders until you do. */}
+          {/* TODO(isaiah): add projects to src/data/projects.json — this empty state renders until you do. */}
           No projects yet — check back soon.
         </p>
       )

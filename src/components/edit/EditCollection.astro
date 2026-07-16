@@ -1,0 +1,190 @@
+---
+import Band from '../Band.astro';
+import Card from '../Card.astro';
+
+export type CollectionEntry = {
+  id: string;
+  slug: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  href?: string;
+};
+
+export type Props = {
+  area: 'projects' | 'experience';
+  eyebrow: string;
+  entries: CollectionEntry[];
+};
+
+const { area, eyebrow, entries } = Astro.props;
+const heading = area === 'projects' ? 'Projects' : 'Experience';
+---
+
+<Band variant="paper" eyebrow={eyebrow} as="div">
+  <h1>{heading}</h1>
+  <div class="cards" data-editable-area={area} data-collection-list>
+    {entries.map((entry) => (
+      <div class="card-slot" data-entry-id={entry.id}>
+        <Card
+          eyebrow={entry.eyebrow}
+          title={entry.title}
+          body={entry.body}
+          href={entry.href}
+          editable
+          editablePrefix={entry.id}
+          removable
+        />
+      </div>
+    ))}
+  </div>
+  <button type="button" class="editor-add-btn" id={`add-${area}-entry`}>+ Add {area === 'projects' ? 'project' : 'entry'}</button>
+
+  <template id={`tpl-${area}-card`}>
+    <div class="card-slot" data-entry-id="__ID__">
+      <Card
+        eyebrow="New entry"
+        title="Untitled"
+        body=""
+        editable
+        editablePrefix="__ID__"
+        removable
+      />
+    </div>
+  </template>
+</Band>
+
+<script define:vars={{ area, entries }}>
+  // define:vars serializes `entries`/`area` into this inline script — used
+  // only as the initial seed for the in-memory working array, never
+  // rendered back into the DOM as raw HTML.
+  window.__editorSeed = window.__editorSeed || {};
+  window.__editorSeed[area] = entries;
+</script>
+
+<script>
+  import { debounce, saveArea, slugify, statusLabel, uniqueId } from '../../lib/editor/client';
+  import type { SaveStatus } from '../../lib/editor/client';
+
+  type Entry = { id: string; slug: string; eyebrow: string; title: string; body: string; href?: string };
+
+  const list = document.querySelector<HTMLElement>('[data-collection-list]');
+  const areaAttr = list?.getAttribute('data-editable-area');
+  const area = areaAttr === 'projects' || areaAttr === 'experience' ? areaAttr : null;
+  if (list && area) {
+    // Re-bind to a narrowed const: TS doesn't retain the `area !== null`
+    // narrowing for a variable captured by the nested doSave() closure below.
+    const areaName: 'projects' | 'experience' = area;
+    const seed = ((window as unknown as { __editorSeed: Record<string, Entry[]> }).__editorSeed?.[areaName] ?? []) as Entry[];
+    const working = new Map<string, Entry>(seed.map((entry) => [entry.id, { ...entry }]));
+
+    let status: SaveStatus = 'idle';
+    function reportStatus(next: SaveStatus) {
+      status = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
+      );
+    }
+
+    async function doSave() {
+      reportStatus('saving');
+      const payload = Array.from(working.values());
+      const result = await saveArea(areaName, payload);
+      reportStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleSave = debounce(doSave, 1500);
+
+    function fieldOf(el: HTMLElement): { id: string; field: keyof Entry } | null {
+      const attr = el.getAttribute('data-editable') ?? el.getAttribute('data-editable-href');
+      if (!attr) return null;
+      const dot = attr.indexOf('.');
+      if (dot === -1) return null;
+      return { id: attr.slice(0, dot), field: attr.slice(dot + 1) as keyof Entry };
+    }
+
+    function wireSlot(slot: HTMLElement) {
+      slot.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
+        el.addEventListener('input', () => {
+          const target = fieldOf(el);
+          if (!target) return;
+          const entry = working.get(target.id);
+          if (!entry) return;
+          (entry as unknown as Record<string, unknown>)[target.field] = el.textContent ?? '';
+          reportStatus('dirty');
+          scheduleSave();
+        });
+      });
+
+      slot.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = fieldOf(btn);
+          if (!target) return;
+          const entry = working.get(target.id);
+          if (!entry) return;
+          const current = entry.href ?? '';
+          const next = window.prompt('Edit link URL (leave blank for none):', current);
+          if (next === null) return;
+          const value = next.trim();
+          entry.href = value.length > 0 ? value : undefined;
+          const valueEl = slot.querySelector('[data-editable-href-value]');
+          if (valueEl) valueEl.textContent = value.length > 0 ? value : '(none)';
+          reportStatus('dirty');
+          scheduleSave();
+        });
+      });
+
+      const removeBtn = slot.querySelector<HTMLButtonElement>('[data-remove-entry]');
+      removeBtn?.addEventListener('click', () => {
+        const id = removeBtn.getAttribute('data-remove-entry');
+        if (!id) return;
+        if (!window.confirm('Remove this entry? It will be deleted from the draft on next save.')) return;
+        working.delete(id);
+        slot.remove();
+        reportStatus('dirty');
+        scheduleSave();
+      });
+    }
+
+    list.querySelectorAll<HTMLElement>('.card-slot').forEach(wireSlot);
+
+    const addBtn = document.getElementById(`add-${area}-entry`);
+    const template = document.getElementById(`tpl-${area}-card`) as HTMLTemplateElement | null;
+    addBtn?.addEventListener('click', () => {
+      if (!template) return;
+      const id = uniqueId();
+      const fragment = template.content.cloneNode(true) as DocumentFragment;
+      const html = fragment.querySelector('.card-slot')!.outerHTML.split('__ID__').join(id);
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const slot = wrapper.firstElementChild as HTMLElement;
+      // `addBtn` is a sibling of `list` (the .cards grid), not a child of it —
+      // append to the grid itself rather than insertBefore(addBtn).
+      list.appendChild(slot);
+
+      const newEntry: Entry = { id, slug: slugify(`entry-${id}`), eyebrow: 'New entry', title: 'Untitled', body: '' };
+      working.set(id, newEntry);
+      wireSlot(slot);
+      reportStatus('dirty');
+      scheduleSave();
+
+      const titleEl = slot.querySelector<HTMLElement>('[data-editable$=".title"]');
+      titleEl?.focus();
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void doSave();
+    });
+  }
+</script>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+
+  template {
+    display: none;
+  }
+</style>

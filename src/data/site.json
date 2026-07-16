@@ -1,0 +1,24 @@
+{
+  "home": {
+    "hero": {
+      "eyebrow": "SMU · Business · Strategy & Consulting",
+      "headlineHtml": "Structured thinking,<br>applied to real problems.",
+      "lede": "I'm Isaiah Ho, a business student at Singapore Management University building toward a career in strategy consulting. This is where I write, build, and think out loud.",
+      "primaryCta": { "label": "Experience", "href": "/experience" },
+      "ghostCta": { "label": "View projects", "href": "/projects" }
+    }
+  },
+  "about": {
+    "lede": "I'm Isaiah Ho, a business student at Singapore Management University (SMU), currently working toward a career in strategy and management consulting.",
+    "paragraphs": [
+      "I'm drawn to problems that reward structured thinking: breaking down an ambiguous question, testing a hypothesis against evidence, and landing on a recommendation someone can actually act on. That's the thread running through the case work, research, and projects on this site.",
+      "Outside of coursework, I'm building the habit of writing things down — partly to think more clearly, partly so there's a record of how my thinking changes over time. This site is that record."
+    ]
+  },
+  "contact": {
+    "lede": "The fastest way to reach me is email.",
+    "email": "isaiahho815@gmail.com",
+    "linkedin": null,
+    "github": null
+  }
+}

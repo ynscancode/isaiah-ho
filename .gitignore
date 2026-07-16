@@ -31,3 +31,6 @@ pnpm-debug.log*
 
 .vercel
 .env*
+# but keep the placeholder-only example file tracked (contains no real secrets)
+# NB: this negation must stay last — a later `.env*` rule silently re-ignores it.
+!.env.local.example

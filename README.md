@@ -9,7 +9,7 @@ Personal site for Isaiah Ho (business student, Singapore Management University) 
 - Self-hosted fonts (`@fontsource/space-grotesk`, `@fontsource/source-serif-4`, `@fontsource/ibm-plex-mono`) — no external font requests.
 - Astro's content collections (`src/content.config.ts`) power the blog.
 
-**If you're here to edit content (bio, projects, blog posts, contact links) rather than code, skip straight to [`CONTENT-GUIDE.md`](./CONTENT-GUIDE.md) — it's written for a non-developer.**
+**If you're here to edit content (bio, projects, blog posts, contact links) rather than code, skip straight to [`CONTENT-GUIDE.md`](./CONTENT-GUIDE.md) — it's written for a non-developer.** Most of that content (hero, about, contact, projects, experience, blog) can now also be edited directly on the live site through the inline content editor — see [`docs/EDITOR-SETUP.md`](./docs/EDITOR-SETUP.md) for one-time setup and day-to-day usage.
 
 ## Local dev quickstart
 

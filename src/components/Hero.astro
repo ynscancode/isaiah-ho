@@ -1,22 +1,69 @@
 ---
 export type Props = {
   eyebrow: string;
+  headlineHtml: string;
   lede: string;
   primaryCta: { label: string; href: string };
   ghostCta: { label: string; href: string };
+  /** Editor-only. Defaults false so public pages render byte-identical
+   * markup — see src/pages/edit/[...path].astro. When true, adds
+   * data-editable attributes / contenteditable to EXISTING elements only
+   * (no new nodes in the hero-copy flow) to avoid changing box sizing
+   * per KB-0004/KB-0013. The two "edit link" buttons are the one addition,
+   * each wrapped with its anchor in a `.cta-edit-group` span that becomes
+   * the flex item in place of the bare anchor — styling for that lives in
+   * EditorHarness.astro (:global), never in this component's own CSS, so
+   * public builds carry zero extra style text either. */
+  editable?: boolean;
 };
 
-const { eyebrow, lede, primaryCta, ghostCta } = Astro.props;
+const { eyebrow, headlineHtml, lede, primaryCta, ghostCta, editable = false } = Astro.props;
 ---
 
 <div class="hero">
   <div class="hero-copy">
-    <span class="eyebrow mono">{eyebrow}</span>
-    <h1><slot /></h1>
-    <p class="lede">{lede}</p>
+    <span
+      class="eyebrow mono"
+      data-editable={editable ? 'eyebrow' : undefined}
+      contenteditable={editable ? 'true' : undefined}
+    >{eyebrow}</span>
+    <h1
+      set:html={headlineHtml}
+      data-editable={editable ? 'headlineHtml' : undefined}
+      contenteditable={editable ? 'true' : undefined}
+    />
+    <p
+      class="lede"
+      data-editable={editable ? 'lede' : undefined}
+      contenteditable={editable ? 'true' : undefined}
+    >{lede}</p>
     <div class="btn-row">
-      <a class="btn btn-primary" href={primaryCta.href}>{primaryCta.label}</a>
-      <a class="btn btn-ghost" href={ghostCta.href}>{ghostCta.label}</a>
+      {editable ? (
+        <span class="cta-edit-group">
+          <a
+            class="btn btn-primary"
+            href={primaryCta.href}
+            data-editable={'primaryCta.label'}
+            contenteditable="true"
+          >{primaryCta.label}</a>
+          <button type="button" class="edit-href-btn" data-editable-href="primaryCta.href">edit link</button>
+        </span>
+      ) : (
+        <a class="btn btn-primary" href={primaryCta.href}>{primaryCta.label}</a>
+      )}
+      {editable ? (
+        <span class="cta-edit-group">
+          <a
+            class="btn btn-ghost"
+            href={ghostCta.href}
+            data-editable={'ghostCta.label'}
+            contenteditable="true"
+          >{ghostCta.label}</a>
+          <button type="button" class="edit-href-btn" data-editable-href="ghostCta.href">edit link</button>
+        </span>
+      ) : (
+        <a class="btn btn-ghost" href={ghostCta.href}>{ghostCta.label}</a>
+      )}
     </div>
   </div>
   <div class="hero-matrix">

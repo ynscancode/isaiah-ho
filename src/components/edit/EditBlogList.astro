@@ -1,0 +1,66 @@
+---
+import Band from '../Band.astro';
+import Card from '../Card.astro';
+
+export type Props = {
+  posts: { id: string; title: string; description: string; date: Date; tags: string[]; draft: boolean }[];
+};
+
+const { posts } = Astro.props;
+const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
+---
+
+<Band variant="paper" eyebrow="04 — Latest writing" as="div">
+  <h1>Blog</h1>
+  <a class="editor-add-btn" href="/edit/blog/new">+ Add blog post</a>
+  <div class="cards">
+    {posts.length === 0 && <p class="empty-state">No posts yet — use "Add blog post" above.</p>}
+    {posts.map((post) => (
+      <div class="card-slot-wrap" data-post-id={post.id}>
+        <Card
+          eyebrow={`${dateFormatter.format(post.date).toUpperCase()}${post.draft ? ' · DRAFT' : ''}`}
+          title={post.title}
+          body={post.description}
+          href={`/edit/blog/${post.id}`}
+          tags={post.tags}
+        />
+        <button type="button" class="card-remove-btn" data-remove-post={post.id} aria-label={`Delete ${post.title}`}>
+          Delete
+        </button>
+      </div>
+    ))}
+  </div>
+</Band>
+
+<script>
+  import { deleteBlogPost } from '../../lib/editor/client';
+
+  document.querySelectorAll<HTMLButtonElement>('[data-remove-post]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-remove-post');
+      if (!id) return;
+      if (!window.confirm(`Delete blog post "${id}"? This removes the file from the draft branch.`)) return;
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+      const result = await deleteBlogPost(id);
+      if (result.ok) {
+        btn.closest('.card-slot-wrap')?.remove();
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+        window.alert(`Delete failed: ${result.error ?? 'unknown error'}`);
+      }
+    });
+  });
+</script>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+  }
+
+  .card-slot-wrap {
+    position: relative;
+  }
+</style>

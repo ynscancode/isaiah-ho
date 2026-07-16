@@ -1,0 +1,131 @@
+---
+import Hero from '../Hero.astro';
+import PositioningMatrix from '../PositioningMatrix.astro';
+
+export type Props = {
+  hero: {
+    eyebrow: string;
+    headlineHtml: string;
+    lede: string;
+    primaryCta: { label: string; href: string };
+    ghostCta: { label: string; href: string };
+  };
+};
+
+const { hero } = Astro.props;
+---
+
+<div data-editable-area="home">
+  <Hero
+    eyebrow={hero.eyebrow}
+    headlineHtml={hero.headlineHtml}
+    lede={hero.lede}
+    primaryCta={hero.primaryCta}
+    ghostCta={hero.ghostCta}
+    editable
+  >
+    <PositioningMatrix
+      slot="matrix"
+      axisTop="Data-driven"
+      axisBottom="Narrative-driven"
+      axisLeft="Exploratory"
+      axisRight="Structured"
+      quadrants={['Frameworks', 'Case method', 'Discovery', 'Storytelling']}
+      dotTop="28%"
+      dotLeft="64%"
+      dotLabel="Isaiah"
+      ariaLabel="Positioning matrix: structured, data-driven approach, placed in the Case method quadrant. Not editable in MVP — see product-owner-20260716T000000."
+    />
+  </Hero>
+  <p class="editor-note">
+    The positioning matrix, page navigation, and footer are not editable in this MVP
+    (see product-owner-20260716T000000 on the team board).
+  </p>
+</div>
+
+<script>
+  import { debounce, getPath, saveArea, sanitizeHeadlineHtml, setPath, statusLabel } from '../../lib/editor/client';
+  import type { SaveStatus } from '../../lib/editor/client';
+
+  const AREA = 'home';
+  const container = document.querySelector<HTMLElement>('[data-editable-area="home"]');
+  if (container) {
+    const seed = {
+      eyebrow: container.querySelector<HTMLElement>('[data-editable="eyebrow"]')?.textContent ?? '',
+      headlineHtml: container.querySelector<HTMLElement>('[data-editable="headlineHtml"]')?.innerHTML ?? '',
+      lede: container.querySelector<HTMLElement>('[data-editable="lede"]')?.textContent ?? '',
+      primaryCta: {
+        label: container.querySelector<HTMLElement>('[data-editable="primaryCta.label"]')?.textContent ?? '',
+        href: container.querySelector<HTMLAnchorElement>('[data-editable="primaryCta.label"]')?.getAttribute('href') ?? '',
+      },
+      ghostCta: {
+        label: container.querySelector<HTMLElement>('[data-editable="ghostCta.label"]')?.textContent ?? '',
+        href: container.querySelector<HTMLAnchorElement>('[data-editable="ghostCta.label"]')?.getAttribute('href') ?? '',
+      },
+    };
+
+    const working: typeof seed = JSON.parse(JSON.stringify(seed));
+    let status: SaveStatus = 'idle';
+
+    function reportStatus(next: SaveStatus) {
+      status = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
+      );
+    }
+
+    async function doSave() {
+      reportStatus('saving');
+      const result = await saveArea(AREA, working);
+      reportStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleSave = debounce(doSave, 1500);
+
+    container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
+      // The CTA labels are real <a href> elements made contenteditable —
+      // prevent a click from navigating away mid-edit.
+      if (el.tagName === 'A') {
+        el.addEventListener('click', (event) => event.preventDefault());
+      }
+      el.addEventListener('input', () => {
+        const path = el.getAttribute('data-editable');
+        if (!path) return;
+        const value = el.tagName === 'H1' ? sanitizeHeadlineHtml(el.innerHTML) : el.textContent ?? '';
+        setPath(working as unknown as Record<string, unknown>, path, value);
+        reportStatus('dirty');
+        scheduleSave();
+      });
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const path = btn.getAttribute('data-editable-href');
+        if (!path) return;
+        const current = String(getPath(working, path) ?? '');
+        const next = window.prompt('Edit URL', current);
+        if (next === null) return;
+        const value = next.trim();
+        setPath(working as unknown as Record<string, unknown>, path, value);
+        const anchor = btn.previousElementSibling as HTMLAnchorElement | null;
+        if (anchor) anchor.setAttribute('href', value);
+        reportStatus('dirty');
+        scheduleSave();
+      });
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void doSave();
+    });
+  }
+</script>
+
+<style>
+  .editor-note {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1rem 2.5rem 0;
+    font-size: 0.85rem;
+    color: var(--slate, #5b6472);
+  }
+</style>

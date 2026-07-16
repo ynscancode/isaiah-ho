@@ -1,0 +1,163 @@
+---
+import Band from '../Band.astro';
+
+export type Props = {
+  contact: { lede: string; email: string | null; linkedin: string | null; github: string | null };
+};
+
+const { contact } = Astro.props;
+---
+
+<Band variant="ink" eyebrow="05 — Contact" as="div">
+  <h1>Contact</h1>
+  <p class="lede" data-editable="lede" contenteditable="true" data-editable-area="contact">{contact.lede}</p>
+  <dl class="particulars" data-editable-area="contact">
+    <div>
+      <dt class="mono">Email</dt>
+      <dd class:list={{ 'coming-soon': !contact.email }} data-editable-field="email">
+        {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : 'Coming soon'}
+      </dd>
+      <button type="button" class="edit-href-btn" data-editable-href="email" data-nullable="true">edit email</button>
+    </div>
+    <div>
+      <dt class="mono">LinkedIn</dt>
+      <dd class:list={{ 'coming-soon': !contact.linkedin }} data-editable-field="linkedin">
+        {contact.linkedin ? <a href={contact.linkedin}>{contact.linkedin}</a> : 'Coming soon'}
+      </dd>
+      <button type="button" class="edit-href-btn" data-editable-href="linkedin" data-nullable="true">edit URL</button>
+    </div>
+    <div>
+      <dt class="mono">GitHub</dt>
+      <dd class:list={{ 'coming-soon': !contact.github }} data-editable-field="github">
+        {contact.github ? <a href={contact.github}>{contact.github}</a> : 'Coming soon'}
+      </dd>
+      <button type="button" class="edit-href-btn" data-editable-href="github" data-nullable="true">edit URL</button>
+    </div>
+  </dl>
+</Band>
+
+<script>
+  import { debounce, saveArea, setPath, statusLabel } from '../../lib/editor/client';
+  import type { SaveStatus } from '../../lib/editor/client';
+
+  const AREA = 'contact';
+  const ledeEl = document.querySelector<HTMLElement>('[data-editable="lede"][data-editable-area="contact"]');
+  const dl = document.querySelector<HTMLElement>('dl[data-editable-area="contact"]');
+
+  if (ledeEl && dl) {
+    function readField(name: string): string | null {
+      const dd = dl!.querySelector<HTMLElement>(`[data-editable-field="${name}"]`);
+      const anchor = dd?.querySelector('a');
+      return anchor ? anchor.textContent : null;
+    }
+
+    const working = {
+      lede: ledeEl.textContent ?? '',
+      email: readField('email'),
+      linkedin: readField('linkedin'),
+      github: readField('github'),
+    };
+
+    let status: SaveStatus = 'idle';
+    function reportStatus(next: SaveStatus) {
+      status = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
+      );
+    }
+
+    async function doSave() {
+      reportStatus('saving');
+      const result = await saveArea(AREA, working);
+      reportStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleSave = debounce(doSave, 1500);
+
+    ledeEl.addEventListener('input', () => {
+      working.lede = ledeEl.textContent ?? '';
+      reportStatus('dirty');
+      scheduleSave();
+    });
+
+    dl.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const field = btn.getAttribute('data-editable-href') as 'email' | 'linkedin' | 'github' | null;
+        if (!field) return;
+        const current = (working as Record<string, unknown>)[field] as string | null;
+        const label = field === 'email' ? 'Edit email address' : 'Edit URL';
+        const next = window.prompt(`${label} (leave blank for "Coming soon"):`, current ?? '');
+        if (next === null) return;
+        const trimmed = next.trim();
+        const value = trimmed.length > 0 ? trimmed : null;
+        setPath(working as unknown as Record<string, unknown>, field, value);
+
+        const dd = dl!.querySelector<HTMLElement>(`[data-editable-field="${field}"]`);
+        if (dd) {
+          dd.textContent = '';
+          if (value) {
+            dd.classList.remove('coming-soon');
+            const a = document.createElement('a');
+            a.href = field === 'email' ? `mailto:${value}` : value;
+            a.textContent = value;
+            dd.appendChild(a);
+          } else {
+            dd.classList.add('coming-soon');
+            dd.textContent = 'Coming soon';
+          }
+        }
+        reportStatus('dirty');
+        scheduleSave();
+      });
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void doSave();
+    });
+  }
+</script>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.75rem;
+  }
+
+  .lede {
+    color: #c9ccd9;
+    font-size: 1.05rem;
+    margin: 0 0 2.5rem;
+  }
+
+  .particulars {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    margin: 0;
+  }
+
+  .particulars dt {
+    color: var(--signal);
+    margin-bottom: 0.3rem;
+  }
+
+  .particulars dd {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .particulars a {
+    color: var(--paper);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .particulars a:hover {
+    color: var(--signal);
+  }
+
+  .coming-soon {
+    color: #8891ab;
+    font-style: italic;
+  }
+</style>
