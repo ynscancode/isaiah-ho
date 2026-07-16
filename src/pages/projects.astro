@@ -1,8 +1,10 @@
 ---
+import { getCollection } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
-import { projects } from '../data/projects';
+
+const projects = await getCollection('projects');
 ---
 
 <BaseLayout
@@ -15,19 +17,19 @@ import { projects } from '../data/projects';
       projects.length > 0 ? (
         <div class="cards">
           {projects.map((project) => (
-            <div id={project.slug}>
+            <div id={project.data.slug}>
               <Card
-                eyebrow={project.eyebrow}
-                title={project.title}
-                body={project.body}
-                href={project.href}
+                eyebrow={project.data.eyebrow}
+                title={project.data.title}
+                body={project.data.body}
+                href={project.data.href}
               />
             </div>
           ))}
         </div>
       ) : (
         <p class="empty-state">
-          {/* TODO(isaiah): add projects to src/data/projects.ts */}
+          {/* TODO(isaiah): add projects to src/data/projects.json */}
           Nothing published here yet — projects are on the way.
         </p>
       )

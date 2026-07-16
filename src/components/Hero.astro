@@ -1,18 +1,19 @@
 ---
 export type Props = {
   eyebrow: string;
+  headlineHtml: string;
   lede: string;
   primaryCta: { label: string; href: string };
   ghostCta: { label: string; href: string };
 };
 
-const { eyebrow, lede, primaryCta, ghostCta } = Astro.props;
+const { eyebrow, headlineHtml, lede, primaryCta, ghostCta } = Astro.props;
 ---
 
 <div class="hero">
   <div class="hero-copy">
     <span class="eyebrow mono">{eyebrow}</span>
-    <h1><slot /></h1>
+    <h1 set:html={headlineHtml} />
     <p class="lede">{lede}</p>
     <div class="btn-row">
       <a class="btn btn-primary" href={primaryCta.href}>{primaryCta.label}</a>

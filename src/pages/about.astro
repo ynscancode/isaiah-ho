@@ -1,6 +1,10 @@
 ---
+import { getEntry } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
+
+const aboutEntry = await getEntry('site', 'about');
+const about = aboutEntry!.data;
 ---
 
 <BaseLayout
@@ -10,27 +14,10 @@ import Band from '../components/Band.astro';
   <Band variant="ink" eyebrow="01 — About">
     <h1>About</h1>
     <div class="prose">
-      {/* TODO(isaiah): replace this placeholder bio with your real one. Only
-          known facts were used here (SMU business student, targeting
-          strategy/management consulting) — no specific achievements, GPA,
-          clubs, internships, or awards have been invented. Add those yourself. */}
       <p class="lede">
-        I'm Isaiah Ho, a business student at Singapore Management University
-        (SMU), currently working toward a career in strategy and management
-        consulting.
+        {about.lede}
       </p>
-      <p>
-        I'm drawn to problems that reward structured thinking: breaking down
-        an ambiguous question, testing a hypothesis against evidence, and
-        landing on a recommendation someone can actually act on. That's the
-        thread running through the case work, research, and projects on this
-        site.
-      </p>
-      <p>
-        Outside of coursework, I'm building the habit of writing things down
-        — partly to think more clearly, partly so there's a record of how my
-        thinking changes over time. This site is that record.
-      </p>
+      {about.paragraphs!.map((paragraph) => <p>{paragraph}</p>)}
     </div>
   </Band>
 </BaseLayout>

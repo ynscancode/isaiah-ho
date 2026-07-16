@@ -1,8 +1,10 @@
 ---
+import { getCollection } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
-import { experience } from '../data/experience';
+
+const experience = await getCollection('experience');
 ---
 
 <BaseLayout
@@ -15,19 +17,19 @@ import { experience } from '../data/experience';
       experience.length > 0 ? (
         <div class="cards">
           {experience.map((exp) => (
-            <div id={exp.slug}>
+            <div id={exp.data.slug}>
               <Card
-                eyebrow={exp.eyebrow}
-                title={exp.title}
-                body={exp.body}
-                href={exp.href}
+                eyebrow={exp.data.eyebrow}
+                title={exp.data.title}
+                body={exp.data.body}
+                href={exp.data.href}
               />
             </div>
           ))}
         </div>
       ) : (
         <p class="empty-state">
-          {/* TODO(isaiah): add experience to src/data/experience.ts */}
+          {/* TODO(isaiah): add experience to src/data/experience.json */}
           Nothing published here yet — experience is on the way.
         </p>
       )
