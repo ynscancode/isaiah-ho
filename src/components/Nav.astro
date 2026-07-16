@@ -5,20 +5,24 @@ export type Props = {
 
 const { activePath = Astro.url.pathname } = Astro.props;
 
+const isEdit = activePath.startsWith('/edit');
+const basePath = isEdit ? '/edit' : '';
+const homeHref = isEdit ? '/edit' : '/';
+
 const links = [
-  { href: '/about', label: 'About' },
-  { href: '/experience', label: 'Experience' },
-  { href: '/projects', label: 'Projects' },
-  { href: '/blog', label: 'Blog' },
-  { href: '/contact', label: 'Contact' },
+  { href: `${basePath}/about`, label: 'About' },
+  { href: `${basePath}/experience`, label: 'Experience' },
+  { href: `${basePath}/projects`, label: 'Projects' },
+  { href: `${basePath}/blog`, label: 'Blog' },
+  { href: `${basePath}/contact`, label: 'Contact' },
 ];
 
 const isActive = (href: string) =>
-  href === activePath || (href !== '/' && activePath.startsWith(href));
+  href === activePath || (href !== homeHref && activePath.startsWith(href));
 ---
 
 <nav>
-  <a class="brand" href="/">ISAIAH HO</a>
+  <a class="brand" href={homeHref}>ISAIAH HO</a>
   <ul>
     {
       links.map((link) => (
