@@ -102,11 +102,14 @@ export type SessionPayload = {
 export const SESSION_COOKIE_NAME = '__Host-session';
 export const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60; // ~8h
 
-export async function mintSessionToken(sub: string, secret: string): Promise<{ token: string; exp: number }> {
+export async function mintSessionToken(
+  sub: string,
+  secret: string
+): Promise<{ token: string; iat: number; exp: number }> {
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + SESSION_MAX_AGE_SECONDS;
   const token = await signPayload({ sub, iat, exp } satisfies SessionPayload, secret);
-  return { token, exp };
+  return { token, iat, exp };
 }
 
 export async function verifySessionToken(
@@ -127,6 +130,10 @@ export async function verifySessionToken(
 export async function csrfTokenForSession(session: SessionPayload, secret: string): Promise<string> {
   return hmacSign(secret, `csrf:${session.sub}:${session.iat}`);
 }
+
+/** Non-httpOnly companion to the session cookie — readable by same-origin JS
+ * so the editor UI can echo it back as X-CSRF-Token. See callback.ts. */
+export const CSRF_COOKIE_NAME = 'csrf_token';
 
 export async function verifyCsrfToken(
   headerToken: string | null,

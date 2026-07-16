@@ -5,11 +5,14 @@ import {
   OAUTH_STATE_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
+  CSRF_COOKIE_NAME,
   constantTimeEqual,
+  csrfTokenForSession,
   mintSessionToken,
   sanitizeRedirectTo,
   verifyPayload,
   type OAuthStatePayload,
+  type SessionPayload,
 } from '../../../lib/session';
 
 export const prerender = false;
@@ -76,9 +79,25 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  const { token } = await mintSessionToken(adminUsername, secret);
+  const { token, iat, exp } = await mintSessionToken(adminUsername, secret);
   cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+
+  // Double-submit CSRF token, readable by client JS so it can be echoed back
+  // as the X-CSRF-Token header. Derived from the session itself (see
+  // lib/session.ts) rather than stored server-side (KB-0005) — deliberately
+  // NOT httpOnly, since the whole point of double-submit is that only JS
+  // running on our own origin can read this cookie and attach the header;
+  // a cross-site attacker can trigger the request but can't read the cookie.
+  const sessionForCsrf: SessionPayload = { sub: adminUsername, iat, exp };
+  const csrfToken = await csrfTokenForSession(sessionForCsrf, secret);
+  cookies.set(CSRF_COOKIE_NAME, csrfToken, {
+    httpOnly: false,
     secure: true,
     sameSite: 'lax',
     path: '/',
