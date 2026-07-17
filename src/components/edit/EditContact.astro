@@ -1,62 +1,81 @@
 ---
 import Band from '../Band.astro';
 
-export type Props = {
-  contact: { lede: string; email: string | null; linkedin: string | null; github: string | null };
+export type ContactLink = {
+  id: string;
+  type: 'email' | 'linkedin' | 'github' | 'other';
+  label: string;
+  value: string;
 };
 
-const { contact } = Astro.props;
+export type Props = {
+  contact: { lede: string; links: ContactLink[] };
+  emptyStates: { projects: string; experience: string; blog: string; contact: string };
+};
+
+const { contact, emptyStates } = Astro.props;
 ---
 
 <Band variant="ink" eyebrow="05 — Contact" as="div">
   <h1>Contact</h1>
   <p class="lede" data-editable="lede" contenteditable="true" data-editable-area="contact">{contact.lede}</p>
-  <dl class="particulars" data-editable-area="contact">
-    <div>
-      <dt class="mono">Email</dt>
-      <dd class:list={{ 'coming-soon': !contact.email }} data-editable-field="email">
-        {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : 'Coming soon'}
-      </dd>
-      <button type="button" class="edit-href-btn" data-editable-href="email" data-nullable="true">edit email</button>
-    </div>
-    <div>
-      <dt class="mono">LinkedIn</dt>
-      <dd class:list={{ 'coming-soon': !contact.linkedin }} data-editable-field="linkedin">
-        {contact.linkedin ? <a href={contact.linkedin}>{contact.linkedin}</a> : 'Coming soon'}
-      </dd>
-      <button type="button" class="edit-href-btn" data-editable-href="linkedin" data-nullable="true">edit URL</button>
-    </div>
-    <div>
-      <dt class="mono">GitHub</dt>
-      <dd class:list={{ 'coming-soon': !contact.github }} data-editable-field="github">
-        {contact.github ? <a href={contact.github}>{contact.github}</a> : 'Coming soon'}
-      </dd>
-      <button type="button" class="edit-href-btn" data-editable-href="github" data-nullable="true">edit URL</button>
-    </div>
-  </dl>
+
+  <div class="contact-links-list" data-editable-area="contact-links">
+    {contact.links.map((link) => (
+      <div class="contact-link-row" data-link-id={link.id}>
+        <button type="button" class="card-remove-btn contact-link-remove" data-remove-link={link.id} aria-label="Remove this link">Remove</button>
+
+        <label class="editor-field-label mono">Type</label>
+        <select class="editor-input contact-link-type" data-link-field={`${link.id}.type`}>
+          <option value="email" selected={link.type === 'email'}>Email</option>
+          <option value="linkedin" selected={link.type === 'linkedin'}>LinkedIn</option>
+          <option value="github" selected={link.type === 'github'}>GitHub</option>
+          <option value="other" selected={link.type === 'other'}>Other</option>
+        </select>
+
+        <label class="editor-field-label mono">Label</label>
+        <input class="editor-input contact-link-label" type="text"
+          placeholder="e.g. Twitter, Calendly"
+          value={link.label} data-link-field={`${link.id}.label`}
+          disabled={link.type !== 'other'} />
+
+        <label class="editor-field-label mono">Value</label>
+        <input class="editor-input contact-link-value" type="text"
+          placeholder={link.type === 'email' ? 'name@example.com' : 'https://...'}
+          value={link.value} data-link-field={`${link.id}.value`} />
+      </div>
+    ))}
+  </div>
+  <button type="button" class="editor-add-btn" id="add-contact-link">+ Add contact link</button>
+  {contact.links.length === 0 && (
+    <p class="editor-note">No contact links yet — click "+ Add contact link" to add one.</p>
+  )}
+
+  <hr class="editor-divider" />
+  <label class="editor-field-label mono" for="empty-state-text">Empty-state message</label>
+  <input id="empty-state-text" class="editor-input" type="text" value={emptyStates.contact} data-editable="emptyState" />
+  <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
 </Band>
 
+<script define:vars={{ links: contact.links, emptyStates }}>
+  window.__editorSeed = window.__editorSeed || {};
+  window.__editorSeed.contactLinks = links;
+  window.__editorSeed.emptyStates = emptyStates;
+</script>
+
 <script>
-  import { debounce, saveArea, setPath, statusLabel } from '../../lib/editor/client';
+  import { debounce, saveArea, setPath, statusLabel, uniqueId } from '../../lib/editor/client';
   import type { SaveStatus } from '../../lib/editor/client';
+  import type { ContactLink } from './EditContact.astro';
 
   const AREA = 'contact';
   const ledeEl = document.querySelector<HTMLElement>('[data-editable="lede"][data-editable-area="contact"]');
-  const dl = document.querySelector<HTMLElement>('dl[data-editable-area="contact"]');
+  const list = document.querySelector<HTMLElement>('[data-editable-area="contact-links"]');
 
-  if (ledeEl && dl) {
-    function readField(name: string): string | null {
-      const dd = dl!.querySelector<HTMLElement>(`[data-editable-field="${name}"]`);
-      const anchor = dd?.querySelector('a');
-      return anchor ? anchor.textContent : null;
-    }
-
-    const working = {
-      lede: ledeEl.textContent ?? '',
-      email: readField('email'),
-      linkedin: readField('linkedin'),
-      github: readField('github'),
-    };
+  if (ledeEl && list) {
+    const seedLinks = (window as unknown as { __editorSeed: { contactLinks: ContactLink[] } }).__editorSeed
+      .contactLinks;
+    const working = new Map<string, ContactLink>(seedLinks.map((link) => [link.id, { ...link }]));
 
     let status: SaveStatus = 'idle';
     function reportStatus(next: SaveStatus) {
@@ -68,51 +87,153 @@ const { contact } = Astro.props;
 
     async function doSave() {
       reportStatus('saving');
-      const result = await saveArea(AREA, working);
+      const payload = { lede: ledeEl!.textContent ?? '', links: Array.from(working.values()) };
+      const result = await saveArea(AREA, payload);
       reportStatus(result.ok ? 'saved' : 'error');
     }
 
     const scheduleSave = debounce(doSave, 1500);
 
     ledeEl.addEventListener('input', () => {
-      working.lede = ledeEl.textContent ?? '';
       reportStatus('dirty');
       scheduleSave();
     });
 
-    dl.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const field = btn.getAttribute('data-editable-href') as 'email' | 'linkedin' | 'github' | null;
-        if (!field) return;
-        const current = (working as Record<string, unknown>)[field] as string | null;
-        const label = field === 'email' ? 'Edit email address' : 'Edit URL';
-        const next = window.prompt(`${label} (leave blank for "Coming soon"):`, current ?? '');
-        if (next === null) return;
-        const trimmed = next.trim();
-        const value = trimmed.length > 0 ? trimmed : null;
-        setPath(working as unknown as Record<string, unknown>, field, value);
+    function fieldOf(el: HTMLElement): { id: string; field: keyof ContactLink } | null {
+      const attr = el.getAttribute('data-link-field');
+      if (!attr) return null;
+      const dot = attr.indexOf('.');
+      if (dot === -1) return null;
+      return { id: attr.slice(0, dot), field: attr.slice(dot + 1) as keyof ContactLink };
+    }
 
-        const dd = dl!.querySelector<HTMLElement>(`[data-editable-field="${field}"]`);
-        if (dd) {
-          dd.textContent = '';
-          if (value) {
-            dd.classList.remove('coming-soon');
-            const a = document.createElement('a');
-            a.href = field === 'email' ? `mailto:${value}` : value;
-            a.textContent = value;
-            dd.appendChild(a);
-          } else {
-            dd.classList.add('coming-soon');
-            dd.textContent = 'Coming soon';
+    function wireRow(row: HTMLElement) {
+      const typeEl = row.querySelector<HTMLSelectElement>('.contact-link-type');
+      const labelEl = row.querySelector<HTMLInputElement>('.contact-link-label');
+      const valueEl = row.querySelector<HTMLInputElement>('.contact-link-value');
+
+      typeEl?.addEventListener('change', () => {
+        const target = fieldOf(typeEl);
+        if (!target) return;
+        const entry = working.get(target.id);
+        if (!entry) return;
+        entry.type = typeEl.value as ContactLink['type'];
+        if (labelEl) {
+          labelEl.disabled = entry.type !== 'other';
+          if (entry.type === 'other' && labelEl.value.trim().length === 0) {
+            labelEl.focus();
           }
+        }
+        if (valueEl) {
+          valueEl.placeholder = entry.type === 'email' ? 'name@example.com' : 'https://...';
         }
         reportStatus('dirty');
         scheduleSave();
       });
+
+      labelEl?.addEventListener('input', () => {
+        const target = fieldOf(labelEl);
+        if (!target) return;
+        const entry = working.get(target.id);
+        if (!entry) return;
+        entry.label = labelEl.value;
+        reportStatus('dirty');
+        scheduleSave();
+      });
+
+      valueEl?.addEventListener('input', () => {
+        const target = fieldOf(valueEl);
+        if (!target) return;
+        const entry = working.get(target.id);
+        if (!entry) return;
+        entry.value = valueEl.value;
+        reportStatus('dirty');
+        scheduleSave();
+      });
+
+      const removeBtn = row.querySelector<HTMLButtonElement>('[data-remove-link]');
+      removeBtn?.addEventListener('click', () => {
+        const id = removeBtn.getAttribute('data-remove-link');
+        if (!id) return;
+        if (!window.confirm('Remove this contact link?')) return;
+        working.delete(id);
+        row.remove();
+        reportStatus('dirty');
+        scheduleSave();
+      });
+    }
+
+    list.querySelectorAll<HTMLElement>('.contact-link-row').forEach(wireRow);
+
+    const addBtn = document.getElementById('add-contact-link');
+    addBtn?.addEventListener('click', () => {
+      const id = uniqueId();
+      const newLink: ContactLink = { id, type: 'other', label: '', value: '' };
+      working.set(id, newLink);
+
+      const row = document.createElement('div');
+      row.className = 'contact-link-row';
+      row.setAttribute('data-link-id', id);
+      row.innerHTML = `
+        <button type="button" class="card-remove-btn contact-link-remove" data-remove-link="${id}" aria-label="Remove this link">Remove</button>
+        <label class="editor-field-label mono">Type</label>
+        <select class="editor-input contact-link-type" data-link-field="${id}.type">
+          <option value="email">Email</option>
+          <option value="linkedin">LinkedIn</option>
+          <option value="github">GitHub</option>
+          <option value="other" selected>Other</option>
+        </select>
+        <label class="editor-field-label mono">Label</label>
+        <input class="editor-input contact-link-label" type="text" placeholder="e.g. Twitter, Calendly" value="" data-link-field="${id}.label" />
+        <label class="editor-field-label mono">Value</label>
+        <input class="editor-input contact-link-value" type="text" placeholder="https://..." value="" data-link-field="${id}.value" />
+      `;
+      list.appendChild(row);
+      wireRow(row);
+      reportStatus('dirty');
+      scheduleSave();
+
+      const typeEl = row.querySelector<HTMLSelectElement>('.contact-link-type');
+      typeEl?.focus();
     });
 
     window.addEventListener('editor:save-all', () => {
       void doSave();
+    });
+  }
+
+  // --- Empty-state message (product-owner-20260717T200000 Decision 3) ---
+  const emptyStateEl = document.getElementById('empty-state-text') as HTMLInputElement | null;
+  if (emptyStateEl) {
+    const seedEmptyStates = (
+      window as unknown as { __editorSeed: { emptyStates: { projects: string; experience: string; blog: string; contact: string } } }
+    ).__editorSeed.emptyStates;
+    const workingEmptyStates = { ...seedEmptyStates };
+
+    let esStatus: SaveStatus = 'idle';
+    function reportEsStatus(next: SaveStatus) {
+      esStatus = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status: esStatus, label: statusLabel(esStatus) } })
+      );
+    }
+
+    async function saveEmptyStates() {
+      reportEsStatus('saving');
+      const result = await saveArea('emptyStates', workingEmptyStates);
+      reportEsStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleEsSave = debounce(saveEmptyStates, 1500);
+
+    emptyStateEl.addEventListener('input', () => {
+      workingEmptyStates.contact = emptyStateEl.value;
+      reportEsStatus('dirty');
+      scheduleEsSave();
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void saveEmptyStates();
     });
   }
 </script>
@@ -129,35 +250,30 @@ const { contact } = Astro.props;
     margin: 0 0 2.5rem;
   }
 
-  .particulars {
-    display: flex;
-    flex-direction: column;
-    gap: 1.4rem;
-    margin: 0;
-  }
-
-  .particulars dt {
-    color: var(--signal);
-    margin-bottom: 0.3rem;
-  }
-
-  .particulars dd {
-    margin: 0;
-    font-size: 1.05rem;
-  }
-
-  .particulars a {
-    color: var(--paper);
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-  }
-
-  .particulars a:hover {
-    color: var(--signal);
-  }
-
-  .coming-soon {
+  .editor-note {
+    max-width: 65ch;
+    font-size: 0.85rem;
     color: #8891ab;
-    font-style: italic;
+  }
+
+  .contact-links-list { display: flex; flex-direction: column; gap: 1rem; margin: 0.5rem 0 1rem; }
+  .contact-link-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 8rem 1fr 1fr;
+    gap: 0.75rem 1rem;
+    align-items: end;
+    border: 1px solid var(--line, #d8d3c7);
+    border-radius: 4px;
+    padding: 1rem 3.5rem 1rem 1rem;
+    background: rgba(245, 243, 238, 0.04);
+  }
+  .contact-link-row .editor-field-label { margin: 0 0 0.3rem; font-size: 0.7rem; }
+  .contact-link-row .editor-input { max-width: none; width: 100%; }
+  .contact-link-row .editor-input:disabled { opacity: 0.45; cursor: not-allowed; }
+  .contact-link-remove { position: absolute; top: 0.75rem; right: 0.75rem; }
+
+  @media (max-width: 640px) {
+    .contact-link-row { grid-template-columns: 1fr; padding-top: 2.75rem; }
   }
 </style>

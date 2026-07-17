@@ -2,7 +2,7 @@
 import Band from '../Band.astro';
 
 export type Props = {
-  about: { lede: string; paragraphs: string[] };
+  about: { body: string; image: string | null };
 };
 
 const { about } = Astro.props;
@@ -10,33 +10,53 @@ const { about } = Astro.props;
 
 <Band variant="ink" eyebrow="01 — About" as="div">
   <h1>About</h1>
+
+  <label class="editor-field-label mono" for="about-image-input">Profile photo</label>
+  <div class="about-image-field">
+    <div class="about-image-preview" id="about-image-preview">
+      {about.image ? (
+        <img src={about.image} alt="Current profile photo" />
+      ) : (
+        <div class="about-image-empty" aria-hidden="true"><span class="mono">No photo</span></div>
+      )}
+    </div>
+    <div class="about-image-controls">
+      <input type="file" id="about-image-input" accept="image/jpeg,image/png,image/webp" hidden />
+      <button type="button" class="editor-btn" id="about-image-upload-btn">Upload photo</button>
+      <button type="button" class="editor-btn editor-btn-ghost" id="about-image-remove-btn" hidden={!about.image}>Remove photo</button>
+      <p class="editor-note" id="about-image-status" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <label class="editor-field-label mono" for="about-body">Body</label>
   <div class="prose" data-editable-area="about">
-    <p class="lede" data-editable="lede" contenteditable="true">{about.lede}</p>
-    {about.paragraphs.map((paragraph, index) => (
-      <p data-editable={`paragraphs.${index}`} contenteditable="true">{paragraph}</p>
-    ))}
+    <textarea id="about-body" class="editor-textarea" data-editable="body">{about.body}</textarea>
   </div>
   <p class="editor-note">
-    Editing existing paragraphs only — About is a single editable block, not an
-    add/remove collection, per product-owner-20260716T000000.
+    Paragraphs and line breaks are kept as you type — no formatting syntax needed.
   </p>
 </Band>
 
+<script define:vars={{ aboutImage: about.image }}>
+  window.__editorSeed = window.__editorSeed || {};
+  window.__editorSeed.aboutImage = aboutImage;
+</script>
+
 <script>
-  import { debounce, saveArea, setPath, statusLabel } from '../../lib/editor/client';
+  import { debounce, getCsrfToken, saveArea, statusLabel } from '../../lib/editor/client';
   import type { SaveStatus } from '../../lib/editor/client';
 
   const AREA = 'about';
   const container = document.querySelector<HTMLElement>('[data-editable-area="about"]');
-  if (container) {
-    const paragraphs: string[] = [];
-    container.querySelectorAll<HTMLElement>('[data-editable^="paragraphs."]').forEach((el) => {
-      const idx = Number(el.getAttribute('data-editable')?.split('.')[1] ?? '0');
-      paragraphs[idx] = el.textContent ?? '';
-    });
-    const working: { lede: string; paragraphs: string[] } = {
-      lede: container.querySelector<HTMLElement>('[data-editable="lede"]')?.textContent ?? '',
-      paragraphs,
+  const bodyEl = document.getElementById('about-body') as HTMLTextAreaElement | null;
+
+  if (container && bodyEl) {
+    const seedImage = (window as unknown as { __editorSeed: { aboutImage: string | null } }).__editorSeed
+      .aboutImage;
+
+    const working: { body: string; image: string | null } = {
+      body: bodyEl.value,
+      image: seedImage ?? null,
     };
 
     let status: SaveStatus = 'idle';
@@ -55,17 +75,137 @@ const { about } = Astro.props;
 
     const scheduleSave = debounce(doSave, 1500);
 
-    container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
-      el.addEventListener('input', () => {
-        const path = el.getAttribute('data-editable');
-        if (!path) return;
-        setPath(working as unknown as Record<string, unknown>, path, el.textContent ?? '');
-        reportStatus('dirty');
-        scheduleSave();
-      });
+    bodyEl.addEventListener('input', () => {
+      working.body = bodyEl.value;
+      reportStatus('dirty');
+      scheduleSave();
     });
 
     window.addEventListener('editor:save-all', () => {
+      void doSave();
+    });
+
+    // --- Profile image upload widget ---
+
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+    const MAX_BYTES = 2 * 1024 * 1024; // 2 MB — advisory-only mirror of the
+    // server's real cap (tech-lead-20260717T044343 Decision A); the server's
+    // magic-byte sniff + byte-length check is the actual boundary (KB-0017).
+
+    const fileInput = document.getElementById('about-image-input') as HTMLInputElement | null;
+    const uploadBtn = document.getElementById('about-image-upload-btn') as HTMLButtonElement | null;
+    const removeBtn = document.getElementById('about-image-remove-btn') as HTMLButtonElement | null;
+    const preview = document.getElementById('about-image-preview');
+    const statusEl = document.getElementById('about-image-status');
+
+    function setImageStatus(text: string, tone?: 'ok' | 'error') {
+      if (!statusEl) return;
+      statusEl.textContent = text;
+      if (tone) {
+        statusEl.setAttribute('data-tone', tone);
+      } else {
+        statusEl.removeAttribute('data-tone');
+      }
+    }
+
+    function renderPreview(imagePath: string | null) {
+      if (!preview) return;
+      preview.innerHTML = '';
+      if (imagePath) {
+        const img = document.createElement('img');
+        img.src = imagePath;
+        img.alt = 'Current profile photo';
+        preview.appendChild(img);
+        removeBtn?.removeAttribute('hidden');
+      } else {
+        const empty = document.createElement('div');
+        empty.className = 'about-image-empty';
+        empty.setAttribute('aria-hidden', 'true');
+        const span = document.createElement('span');
+        span.className = 'mono';
+        span.textContent = 'No photo';
+        empty.appendChild(span);
+        preview.appendChild(empty);
+        removeBtn?.setAttribute('hidden', '');
+      }
+    }
+
+    function setControlsDisabled(disabled: boolean) {
+      if (uploadBtn) uploadBtn.disabled = disabled;
+      if (removeBtn) removeBtn.disabled = disabled;
+    }
+
+    function fileToBase64(file: File): Promise<string> {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // strip the "data:<mime>;base64," prefix
+          const comma = result.indexOf(',');
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    uploadBtn?.addEventListener('click', () => {
+      fileInput?.click();
+    });
+
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = '';
+      if (!file) return;
+
+      if (!ALLOWED_TYPES.includes(file.type) || file.size > MAX_BYTES) {
+        setImageStatus('Please choose a JPEG, PNG, or WebP image under 2 MB.', 'error');
+        return;
+      }
+
+      void (async () => {
+        setImageStatus('Uploading…');
+        setControlsDisabled(true);
+        try {
+          const contentBase64 = await fileToBase64(file);
+          const res = await fetch('/api/upload/about-image', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+            body: JSON.stringify({ contentBase64 }),
+          });
+          if (!res.ok) {
+            let data: { error?: string; action?: string } | null = null;
+            try {
+              data = await res.json();
+            } catch {
+              data = null;
+            }
+            if (res.status === 403 && data?.error === 'csrf_invalid') {
+              window.dispatchEvent(new CustomEvent('editor:reauth-needed'));
+            } else {
+              setImageStatus('Please choose a JPEG, PNG, or WebP image under 2 MB.', 'error');
+            }
+            return;
+          }
+          const data = (await res.json()) as { path: string };
+          working.image = data.path;
+          renderPreview(data.path);
+          setImageStatus('Uploaded', 'ok');
+          reportStatus('dirty');
+          await doSave();
+        } catch {
+          setImageStatus('Upload failed. Try again.', 'error');
+        } finally {
+          setControlsDisabled(false);
+        }
+      })();
+    });
+
+    removeBtn?.addEventListener('click', () => {
+      working.image = null;
+      renderPreview(null);
+      setImageStatus('');
+      reportStatus('dirty');
       void doSave();
     });
   }
@@ -81,18 +221,45 @@ const { about } = Astro.props;
     max-width: 65ch;
   }
 
-  .lede {
-    font-size: 1.1rem;
-    color: #c9ccd9;
-  }
-
-  .prose p {
-    margin: 0 0 1.2rem;
-  }
-
   .editor-note {
     max-width: 65ch;
     font-size: 0.85rem;
     color: #8891ab;
   }
+
+  .about-image-field {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin: 0.5rem 0 1.75rem;
+  }
+  .about-image-preview {
+    width: 160px;
+    aspect-ratio: 4 / 5;
+    flex-shrink: 0;
+  }
+  .about-image-preview img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--line, #d8d3c7);
+    display: block;
+  }
+  .about-image-empty {
+    width: 100%; height: 100%;
+    border: 1px dashed var(--slate, #5b6472);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(245, 243, 238, 0.04);
+  }
+  .about-image-empty span { font-size: 0.7rem; opacity: 0.7; }
+  .about-image-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 200px;
+  }
+  #about-image-status[data-tone="error"] { color: #ff9c9c; }
+  #about-image-status[data-tone="ok"] { color: #7fd6a0; }
 </style>

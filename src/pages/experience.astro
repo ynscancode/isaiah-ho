@@ -1,10 +1,14 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
+import { deriveEyebrow } from '../lib/eyebrow';
 
 const experience = await getCollection('experience');
+
+const emptyStatesEntry = await getEntry('site', 'emptyStates');
+const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
 ---
 
 <BaseLayout
@@ -19,7 +23,7 @@ const experience = await getCollection('experience');
           {experience.map((exp) => (
             <div id={exp.data.slug}>
               <Card
-                eyebrow={exp.data.eyebrow}
+                eyebrow={deriveEyebrow(exp.data.category, exp.data.startDate, exp.data.endDate)}
                 title={exp.data.title}
                 body={exp.data.body}
                 href={exp.data.href}
@@ -28,10 +32,7 @@ const experience = await getCollection('experience');
           ))}
         </div>
       ) : (
-        <p class="empty-state">
-          {/* TODO(isaiah): add experience to src/data/experience.json */}
-          Nothing published here yet — experience is on the way.
-        </p>
+        <p class="empty-state">{emptyStateText}</p>
       )
     }
   </Band>

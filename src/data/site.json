@@ -15,16 +15,21 @@
     }
   },
   "about": {
-    "lede": "I'm Isaiah Ho, a business student at Singapore Management University (SMU), currently working toward a career in strategy and management consulting.",
-    "paragraphs": [
-      "I'm drawn to problems that reward structured thinking: breaking down an ambiguous question, testing a hypothesis against evidence, and landing on a recommendation someone can actually act on. That's the thread running through the case work, research, and projects on this site.",
-      "Outside of coursework, I'm building the habit of writing things down — partly to think more clearly, partly so there's a record of how my thinking changes over time. This site is that record."
-    ]
+    "body": "I'm Isaiah Ho, a business student at Singapore Management University (SMU), currently working toward a career in strategy and management consulting.\n\nI'm drawn to problems that reward structured thinking: breaking down an ambiguous question, testing a hypothesis against evidence, and landing on a recommendation someone can actually act on. That's the thread running through the case work, research, and projects on this site.\n\nOutside of coursework, I'm building the habit of writing things down — partly to think more clearly, partly so there's a record of how my thinking changes over time. This site is that record.",
+    "image": null
   },
   "contact": {
     "lede": "The fastest way to reach me is email.",
-    "email": "isaiahho815@gmail.com",
-    "linkedin": "www.linkedin.com/in/isaiah-ho-a9955537a",
-    "github": null
+    "links": [
+      { "id": "email", "type": "email", "label": "Email", "value": "isaiahho815@gmail.com" },
+      { "id": "linkedin", "type": "linkedin", "label": "LinkedIn", "value": "https://www.linkedin.com/in/isaiah-ho-a9955537a" },
+      { "id": "github", "type": "github", "label": "GitHub", "value": "" }
+    ]
+  },
+  "emptyStates": {
+    "projects": "Coming soon.",
+    "experience": "Coming soon.",
+    "blog": "Coming soon.",
+    "contact": "Coming soon."
   }
 }

@@ -4,9 +4,10 @@ import Card from '../Card.astro';
 
 export type Props = {
   posts: { id: string; title: string; description: string; date: Date; tags: string[]; draft: boolean }[];
+  emptyStates: { projects: string; experience: string; blog: string; contact: string };
 };
 
-const { posts } = Astro.props;
+const { posts, emptyStates } = Astro.props;
 const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
 ---
 
@@ -30,10 +31,21 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
       </div>
     ))}
   </div>
+
+  <hr class="editor-divider" />
+  <label class="editor-field-label mono" for="empty-state-text-blog">Empty-state message</label>
+  <input id="empty-state-text-blog" class="editor-input" type="text" value={emptyStates.blog} data-editable="emptyState" />
+  <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
 </Band>
 
+<script define:vars={{ emptyStates }}>
+  window.__editorSeed = window.__editorSeed || {};
+  window.__editorSeed.emptyStates = emptyStates;
+</script>
+
 <script>
-  import { deleteBlogPost } from '../../lib/editor/client';
+  import { deleteBlogPost, debounce, saveArea, statusLabel } from '../../lib/editor/client';
+  import type { SaveStatus } from '../../lib/editor/client';
 
   document.querySelectorAll<HTMLButtonElement>('[data-remove-post]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -52,6 +64,41 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
       }
     });
   });
+
+  // --- Empty-state message (product-owner-20260717T200000 Decision 3) ---
+  const emptyStateEl = document.getElementById('empty-state-text-blog') as HTMLInputElement | null;
+  if (emptyStateEl) {
+    const seedEmptyStates = (
+      window as unknown as { __editorSeed: { emptyStates: { projects: string; experience: string; blog: string; contact: string } } }
+    ).__editorSeed.emptyStates;
+    const workingEmptyStates = { ...seedEmptyStates };
+
+    let esStatus: SaveStatus = 'idle';
+    function reportEsStatus(next: SaveStatus) {
+      esStatus = next;
+      window.dispatchEvent(
+        new CustomEvent('editor:area-status', { detail: { status: esStatus, label: statusLabel(esStatus) } })
+      );
+    }
+
+    async function saveEmptyStates() {
+      reportEsStatus('saving');
+      const result = await saveArea('emptyStates', workingEmptyStates);
+      reportEsStatus(result.ok ? 'saved' : 'error');
+    }
+
+    const scheduleEsSave = debounce(saveEmptyStates, 1500);
+
+    emptyStateEl.addEventListener('input', () => {
+      workingEmptyStates.blog = emptyStateEl.value;
+      reportEsStatus('dirty');
+      scheduleEsSave();
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void saveEmptyStates();
+    });
+  }
 </script>
 
 <style>
@@ -62,5 +109,11 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
 
   .card-slot-wrap {
     position: relative;
+  }
+
+  .editor-note {
+    max-width: 65ch;
+    font-size: 0.85rem;
+    color: var(--slate);
   }
 </style>

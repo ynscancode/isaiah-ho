@@ -13,6 +13,7 @@ import {
   projectsBodySchema,
   experienceBodySchema,
   blogPostBodySchema,
+  emptyStatesBodySchema,
 } from '../../../lib/schemas';
 
 export const prerender = false;
@@ -26,8 +27,22 @@ const PROJECTS_JSON_PATH = 'src/data/projects.json';
 const EXPERIENCE_JSON_PATH = 'src/data/experience.json';
 const BLOG_DIR = 'src/content/blog/';
 
-type Area = 'home' | 'about' | 'contact' | 'projects' | 'experience' | 'blog';
-const VALID_AREAS: readonly Area[] = ['home', 'about', 'contact', 'projects', 'experience', 'blog'];
+type Area = 'home' | 'about' | 'contact' | 'projects' | 'experience' | 'blog' | 'emptyStates';
+const VALID_AREAS: readonly Area[] = [
+  'home',
+  'about',
+  'contact',
+  'projects',
+  'experience',
+  'blog',
+  'emptyStates',
+];
+
+// Matches the server-derived about-image path shape exactly
+// (src/pages/api/upload/about-image.ts, tech-lead-20260717T044343 Decision
+// A) — used here to defense-in-depth re-validate before ever building a
+// filesystem/commit path from a stored value, and to gate orphan cleanup.
+const ABOUT_IMAGE_PATH_RE = /^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/;
 
 function isValidArea(value: string): value is Area {
   return (VALID_AREAS as readonly string[]).includes(value);
@@ -103,7 +118,7 @@ export const POST: APIRoute = async ({ params, request }) => {
   await ensureBranch(token, ref, branch, MASTER_BRANCH);
 
   try {
-    if (area === 'home' || area === 'about' || area === 'contact') {
+    if (area === 'home' || area === 'about' || area === 'contact' || area === 'emptyStates') {
       const existing = await getFileOnBranch(token, ref, SITE_JSON_PATH, branch);
       if (!existing) {
         return new Response(JSON.stringify({ error: 'site_json_missing' }), {
@@ -113,6 +128,13 @@ export const POST: APIRoute = async ({ params, request }) => {
       }
       const siteData = JSON.parse(fromBase64(existing.contentBase64)) as Record<string, unknown>;
 
+      // Captured before any overwrite below, used only by the about branch
+      // for orphan-image disposal (KB-0014) after a successful write.
+      const prevAboutImage =
+        area === 'about' && siteData.about && typeof siteData.about === 'object'
+          ? ((siteData.about as { image?: unknown }).image ?? null)
+          : null;
+
       if (area === 'home') {
         const parsed = heroBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
@@ -121,10 +143,14 @@ export const POST: APIRoute = async ({ params, request }) => {
         const parsed = aboutBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
         siteData.about = parsed.data;
-      } else {
+      } else if (area === 'contact') {
         const parsed = contactBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
         siteData.contact = parsed.data;
+      } else {
+        const parsed = emptyStatesBodySchema.safeParse(rawBody);
+        if (!parsed.success) return badRequest('validation_failed');
+        siteData.emptyStates = parsed.data;
       }
 
       const newContent = JSON.stringify(siteData, null, 2) + '\n';
@@ -136,6 +162,34 @@ export const POST: APIRoute = async ({ params, request }) => {
         message: `Update ${area} content`,
         author: COMMIT_AUTHOR,
       });
+
+      // Orphan disposal (KB-0014, tech-lead Decision A): if the about save
+      // just replaced a previously-referenced image with a different one (or
+      // removed it), delete the old file on the draft branch so it doesn't
+      // linger unreferenced. Lives in the authoritative reference writer
+      // (here), not the upload endpoint. Best-effort: a failure here must not
+      // fail the content save that already succeeded.
+      if (area === 'about' && typeof prevAboutImage === 'string' && ABOUT_IMAGE_PATH_RE.test(prevAboutImage)) {
+        const newImage = (siteData.about as { image: unknown }).image;
+        if (newImage !== prevAboutImage) {
+          try {
+            const oldPath = `public${prevAboutImage}`;
+            const oldFile = await getFileOnBranch(token, ref, oldPath, branch);
+            if (oldFile) {
+              await deleteFileOnBranch(token, ref, {
+                path: oldPath,
+                branch,
+                sha: oldFile.sha,
+                message: `Remove orphaned about image: ${prevAboutImage}`,
+                author: COMMIT_AUTHOR,
+              });
+            }
+          } catch (err) {
+            console.error('orphaned about-image delete failed (non-fatal)', err);
+          }
+        }
+      }
+
       return new Response(JSON.stringify({ commitSha }), {
         status: 200,
         headers: { 'content-type': 'application/json' },

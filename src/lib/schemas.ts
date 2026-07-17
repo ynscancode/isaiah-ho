@@ -45,15 +45,61 @@ export const heroBodySchema = z.object({
 });
 
 export const aboutBodySchema = z.object({
-  lede: z.string().max(2000),
-  paragraphs: z.array(z.string().max(5000)).max(50),
+  body: z.string().max(20_000),
+  image: z
+    .string()
+    .regex(/^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/)
+    .nullable(),
 });
+
+// Contact link model (product-owner-20260717T200000 Decision 1, tech-lead-
+// 20260717T044343 Decision B). `value` empty is allowed (per-item "Coming
+// soon" state); a non-empty value is restricted to https?:// (link types) or
+// a mailto-safe email shape (email type) — this is the load-bearing check
+// that closes the `javascript:` href-injection sink on /contact + Footer
+// (KB-0017: client-side validation is not a control, this server check is).
+export const contactLinkType = z.enum(['email', 'linkedin', 'github', 'other']);
+
+export const contactLinkSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1)
+      .max(100)
+      .regex(/^[A-Za-z0-9_-]+$/, 'id must be alphanumeric with hyphens/underscores only'),
+    type: contactLinkType,
+    label: z.string().max(80),
+    value: z.string().max(2048),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'other' && data.label.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['label'],
+        message: 'label is required when type is "other"',
+      });
+    }
+    if (data.value.length > 0) {
+      const isValid =
+        data.type === 'email'
+          ? /^[^\s:]+@[^\s:]+$/.test(data.value)
+          : /^https?:\/\//i.test(data.value);
+      if (!isValid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['value'],
+          message:
+            data.type === 'email'
+              ? 'value must be a plain email address'
+              : 'value must be an http(s) URL',
+        });
+      }
+    }
+  });
 
 export const contactBodySchema = z.object({
   lede: z.string().max(2000),
-  email: z.string().max(320).nullable(),
-  linkedin: z.string().max(2048).nullable(),
-  github: z.string().max(2048).nullable(),
+  links: z.array(contactLinkSchema).max(50),
 });
 
 const slugSchema = z
@@ -62,10 +108,21 @@ const slugSchema = z
   .max(100)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase alphanumeric with hyphens only');
 
+// yyyy-mm-dd, empty string normalized to null so a new entry (empty date
+// picker) can save without a date (product-owner Decision 4 / tech-lead
+// Decision D — startDate is intentionally nullable, not required).
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const optDate = z
+  .union([dateStr, z.literal('')])
+  .transform((v) => (v === '' ? null : v))
+  .nullable();
+
 export const projectEntrySchema = z.object({
   id: slugSchema,
   slug: slugSchema,
-  eyebrow: z.string().max(200),
+  category: z.string().max(200),
+  startDate: optDate,
+  endDate: optDate,
   title: z.string().max(300),
   body: z.string().max(5000),
   href: z.string().max(2048).optional(),
@@ -90,9 +147,20 @@ export const blogPostBodySchema = z.object({
   body: z.string().max(200_000), // markdown body
 });
 
+// Per-collection editable empty-state copy (product-owner Decision 3 /
+// tech-lead Decision D), stored as a 4th site-collection entry (id
+// `emptyStates`) in site.json.
+export const emptyStatesBodySchema = z.object({
+  projects: z.string().max(500),
+  experience: z.string().max(500),
+  blog: z.string().max(500),
+  contact: z.string().max(500),
+});
+
 export type HeroBody = ReturnType<typeof heroBodySchema.parse>;
 export type AboutBody = ReturnType<typeof aboutBodySchema.parse>;
 export type ContactBody = ReturnType<typeof contactBodySchema.parse>;
 export type ProjectsBody = ReturnType<typeof projectsBodySchema.parse>;
 export type ExperienceBody = ReturnType<typeof experienceBodySchema.parse>;
 export type BlogPostBody = ReturnType<typeof blogPostBodySchema.parse>;
+export type EmptyStatesBody = ReturnType<typeof emptyStatesBodySchema.parse>;

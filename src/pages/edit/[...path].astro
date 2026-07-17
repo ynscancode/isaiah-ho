@@ -49,6 +49,18 @@ let pageTitle = 'Edit';
 // the props of the editor component it's handed to below.
 let body: any = null;
 
+// Loaded once, shared by every view that surfaces the per-collection
+// editable empty-state field (product-owner-20260717T200000 Decision 3 /
+// tech-lead-20260717T044343 Decision D) — each editor patches only its own
+// key but must send the whole 4-key object on save.
+const emptyStatesEntry = await getEntry('site', 'emptyStates');
+const emptyStates = {
+  projects: emptyStatesEntry?.data.projects ?? '',
+  experience: emptyStatesEntry?.data.experience ?? '',
+  blog: emptyStatesEntry?.data.blog ?? '',
+  contact: emptyStatesEntry?.data.contact ?? '',
+};
+
 if (segments.length === 0) {
   const homeEntry = await getEntry('site', 'home');
   const hero = homeEntry?.data.hero;
@@ -61,7 +73,7 @@ if (segments.length === 0) {
   pageTitle = 'Edit — About';
   body = {
     view: 'about',
-    about: { lede: aboutEntry.data.lede ?? '', paragraphs: aboutEntry.data.paragraphs ?? [] },
+    about: { body: aboutEntry.data.body ?? '', image: aboutEntry.data.image ?? null },
   };
 } else if (area === 'contact' && !sub) {
   const contactEntry = await getEntry('site', 'contact');
@@ -71,19 +83,18 @@ if (segments.length === 0) {
     view: 'contact',
     contact: {
       lede: contactEntry.data.lede ?? '',
-      email: contactEntry.data.email ?? null,
-      linkedin: contactEntry.data.linkedin ?? null,
-      github: contactEntry.data.github ?? null,
+      links: contactEntry.data.links ?? [],
     },
+    emptyStates,
   };
 } else if (area === 'projects' && !sub) {
   const entries = await getCollection('projects');
   pageTitle = 'Edit — Projects';
-  body = { view: 'projects', entries: entries.map((e) => e.data) };
+  body = { view: 'projects', entries: entries.map((e) => e.data), emptyStates };
 } else if (area === 'experience' && !sub) {
   const entries = await getCollection('experience');
   pageTitle = 'Edit — Experience';
-  body = { view: 'experience', entries: entries.map((e) => e.data) };
+  body = { view: 'experience', entries: entries.map((e) => e.data), emptyStates };
 } else if (area === 'blog' && !sub) {
   const posts = await getCollection('blog');
   const sorted = posts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
@@ -98,6 +109,7 @@ if (segments.length === 0) {
       tags: p.data.tags,
       draft: p.data.draft,
     })),
+    emptyStates,
   };
 } else if (area === 'blog' && sub === 'new') {
   pageTitle = 'Edit — New blog post';
@@ -139,14 +151,14 @@ if (segments.length === 0) {
 <BaseLayout title={pageTitle} description="Isaiah Ho — content editor (private).">
   {body?.view === 'home' && <EditHome hero={body.hero} />}
   {body?.view === 'about' && <EditAbout about={body.about} />}
-  {body?.view === 'contact' && <EditContact contact={body.contact} />}
+  {body?.view === 'contact' && <EditContact contact={body.contact} emptyStates={body.emptyStates} />}
   {body?.view === 'projects' && (
-    <EditCollection area="projects" eyebrow="03 — Selected work" entries={body.entries} />
+    <EditCollection area="projects" eyebrow="03 — Selected work" entries={body.entries} emptyStates={body.emptyStates} />
   )}
   {body?.view === 'experience' && (
-    <EditCollection area="experience" eyebrow="02 — Work history" entries={body.entries} />
+    <EditCollection area="experience" eyebrow="02 — Work history" entries={body.entries} emptyStates={body.emptyStates} />
   )}
-  {body?.view === 'blog-list' && <EditBlogList posts={body.posts} />}
+  {body?.view === 'blog-list' && <EditBlogList posts={body.posts} emptyStates={body.emptyStates} />}
   {body?.view === 'blog-post' && <EditBlogPost post={body.post} isNew={body.isNew} />}
 
   <EditorHarness slot="editor-toolbar" />

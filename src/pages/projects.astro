@@ -1,10 +1,14 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
+import { deriveEyebrow } from '../lib/eyebrow';
 
 const projects = await getCollection('projects');
+
+const emptyStatesEntry = await getEntry('site', 'emptyStates');
+const emptyStateText = emptyStatesEntry?.data.projects ?? 'Coming soon.';
 ---
 
 <BaseLayout
@@ -19,7 +23,7 @@ const projects = await getCollection('projects');
           {projects.map((project) => (
             <div id={project.data.slug}>
               <Card
-                eyebrow={project.data.eyebrow}
+                eyebrow={deriveEyebrow(project.data.category, project.data.startDate, project.data.endDate)}
                 title={project.data.title}
                 body={project.data.body}
                 href={project.data.href}
@@ -28,10 +32,7 @@ const projects = await getCollection('projects');
           ))}
         </div>
       ) : (
-        <p class="empty-state">
-          {/* TODO(isaiah): add projects to src/data/projects.json */}
-          Nothing published here yet — projects are on the way.
-        </p>
+        <p class="empty-state">{emptyStateText}</p>
       )
     }
   </Band>

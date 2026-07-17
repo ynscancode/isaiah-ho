@@ -5,6 +5,7 @@ import Hero from '../components/Hero.astro';
 import PositioningMatrix from '../components/PositioningMatrix.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
+import { deriveEyebrow } from '../lib/eyebrow';
 
 const allProjects = await getCollection('projects');
 const selectedProjects = allProjects.slice(0, 2);
@@ -52,7 +53,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
         <div class="cards">
           {selectedProjects.map((project) => (
             <Card
-              eyebrow={project.data.eyebrow}
+              eyebrow={deriveEyebrow(project.data.category, project.data.startDate, project.data.endDate)}
               title={project.data.title}
               body={project.data.body}
               href={`/projects#${project.data.slug}`}

@@ -1,5 +1,5 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Band from '../../components/Band.astro';
 import Card from '../../components/Card.astro';
@@ -8,6 +8,9 @@ const allPosts = await getCollection('blog', ({ data }) => !data.draft);
 const posts = allPosts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
 const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
+
+const emptyStatesEntry = await getEntry('site', 'emptyStates');
+const emptyStateText = emptyStatesEntry?.data.blog ?? 'Coming soon.';
 ---
 
 <BaseLayout title="Blog" description="Writing by Isaiah Ho on structured thinking, case work, and consulting.">
@@ -27,7 +30,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
           ))}
         </div>
       ) : (
-        <p class="empty-state">No posts yet — check back soon.</p>
+        <p class="empty-state">{emptyStateText}</p>
       )
     }
   </Band>

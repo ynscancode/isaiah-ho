@@ -1,15 +1,32 @@
 ---
+import { getEntry } from 'astro:content';
+
 const year = new Date().getFullYear();
+
+const contactEntry = await getEntry('site', 'contact');
+const links = contactEntry?.data.links ?? [];
+
+function labelFor(link: { type: 'email' | 'linkedin' | 'github' | 'other'; label: string }): string {
+  if (link.type === 'email') return 'Email';
+  if (link.type === 'linkedin') return 'LinkedIn';
+  if (link.type === 'github') return 'GitHub';
+  return link.label;
+}
 ---
 
 <footer>
   <span>&copy; {year} Isaiah Ho</span>
   <span>
-    {/* TODO(isaiah): confirm you want this email address published live before shipping. */}
-    <a href="mailto:isaiahho815@gmail.com">isaiahho815@gmail.com</a>
-    {/* TODO(isaiah): add real LinkedIn/GitHub URLs once you have them, then swap these spans for <a> tags. */}
-    &middot; <span class="coming-soon">LinkedIn (coming soon)</span>
-    &middot; <span class="coming-soon">GitHub (coming soon)</span>
+    {links.map((link, i) => (
+      <>
+        {i > 0 && ' · '}
+        {link.value ? (
+          <a href={link.type === 'email' ? `mailto:${link.value}` : link.value}>{link.value}</a>
+        ) : (
+          <span class="coming-soon">{labelFor(link)} · Coming soon</span>
+        )}
+      </>
+    ))}
   </span>
 </footer>
 

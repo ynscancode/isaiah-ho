@@ -91,29 +91,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const csrfHeader = request.headers.get('X-CSRF-Token');
     const csrfOk = secret ? await verifyCsrfToken(csrfHeader, session, secret) : false;
     if (!csrfOk) {
-      // TEMP-DIAGNOSTIC (remove after CSRF-403 root cause confirmed) —
-      // distinguishes "client never sent/had a CSRF token" from "client sent
-      // one but it doesn't match" WITHOUT logging any secret or token value.
-      // Read this in Vercel logs after the user retries a save:
-      //   csrfHeaderPresent=false  -> mode 1: getCsrfToken() returned '' client-side
-      //                               (csrf_token cookie missing/unreadable in the
-      //                               browser sending the request)
-      //   csrfHeaderPresent=true, csrfCookiePresent=false -> browser has no
-      //     csrf_token cookie on THIS request either, despite a header being sent
-      //     (stale client state / cookie expired or cleared) -> mode 1 variant
-      //   csrfHeaderPresent=true, csrfCookiePresent=true -> header was sent and a
-      //     cookie exists, but they don't verify against the session -> mode 2:
-      //     secret/iat mismatch, almost certainly cookies minted by a prior
-      //     deploy/secret (KB-0016) -> log out + back in re-mints both under the
-      //     current deploy and should resolve it.
-      console.log('[csrf-diag]', {
-        method,
-        pathname,
-        csrfHeaderPresent: !!csrfHeader,
-        csrfCookiePresent: !!cookies.get('csrf_token')?.value,
-      });
-      // END TEMP-DIAGNOSTIC
-
       if (pathname.startsWith('/api/')) {
         return csrfInvalidResponse();
       }

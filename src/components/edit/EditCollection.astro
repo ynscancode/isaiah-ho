@@ -5,7 +5,9 @@ import Card from '../Card.astro';
 export type CollectionEntry = {
   id: string;
   slug: string;
-  eyebrow: string;
+  category: string;
+  startDate: string | null;
+  endDate: string | null;
   title: string;
   body: string;
   href?: string;
@@ -15,9 +17,10 @@ export type Props = {
   area: 'projects' | 'experience';
   eyebrow: string;
   entries: CollectionEntry[];
+  emptyStates: { projects: string; experience: string; blog: string; contact: string };
 };
 
-const { area, eyebrow, entries } = Astro.props;
+const { area, eyebrow, entries, emptyStates } = Astro.props;
 const heading = area === 'projects' ? 'Projects' : 'Experience';
 ---
 
@@ -27,7 +30,9 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
     {entries.map((entry) => (
       <div class="card-slot" data-entry-id={entry.id}>
         <Card
-          eyebrow={entry.eyebrow}
+          category={entry.category}
+          startDate={entry.startDate}
+          endDate={entry.endDate}
           title={entry.title}
           body={entry.body}
           href={entry.href}
@@ -43,8 +48,10 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
   <template id={`tpl-${area}-card`}>
     <div class="card-slot" data-entry-id="__ID__">
       <Card
-        eyebrow="New entry"
-        title="Untitled"
+        category=""
+        startDate={null}
+        endDate={null}
+        title=""
         body=""
         editable
         editablePrefix="__ID__"
@@ -52,21 +59,36 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       />
     </div>
   </template>
+
+  <hr class="editor-divider" />
+  <label class="editor-field-label mono" for={`empty-state-text-${area}`}>Empty-state message</label>
+  <input id={`empty-state-text-${area}`} class="editor-input" type="text" value={emptyStates[area]} data-editable="emptyState" />
+  <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
 </Band>
 
-<script define:vars={{ area, entries }}>
-  // define:vars serializes `entries`/`area` into this inline script — used
-  // only as the initial seed for the in-memory working array, never
-  // rendered back into the DOM as raw HTML.
+<script define:vars={{ area, entries, emptyStates }}>
+  // define:vars serializes `entries`/`area`/`emptyStates` into this inline
+  // script — used only as the initial seed for the in-memory working state,
+  // never rendered back into the DOM as raw HTML.
   window.__editorSeed = window.__editorSeed || {};
   window.__editorSeed[area] = entries;
+  window.__editorSeed.emptyStates = emptyStates;
 </script>
 
 <script>
   import { debounce, saveArea, slugify, statusLabel, uniqueId } from '../../lib/editor/client';
   import type { SaveStatus } from '../../lib/editor/client';
 
-  type Entry = { id: string; slug: string; eyebrow: string; title: string; body: string; href?: string };
+  type Entry = {
+    id: string;
+    slug: string;
+    category: string;
+    startDate: string | null;
+    endDate: string | null;
+    title: string;
+    body: string;
+    href?: string;
+  };
 
   const list = document.querySelector<HTMLElement>('[data-collection-list]');
   const areaAttr = list?.getAttribute('data-editable-area');
@@ -104,13 +126,33 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
     }
 
     function wireSlot(slot: HTMLElement) {
-      slot.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
+      // contenteditable text fields (category/title/body)
+      slot.querySelectorAll<HTMLElement>('[contenteditable="true"][data-editable]').forEach((el) => {
         el.addEventListener('input', () => {
+          // Some browsers leave a stray <br> behind after a full delete,
+          // which would silently defeat the :empty::before CSS hint
+          // (ui-ux-designer-20260717T210000 section 6 implementation note).
+          if (el.textContent === '' && el.innerHTML !== '') {
+            el.innerHTML = '';
+          }
           const target = fieldOf(el);
           if (!target) return;
           const entry = working.get(target.id);
           if (!entry) return;
           (entry as unknown as Record<string, unknown>)[target.field] = el.textContent ?? '';
+          reportStatus('dirty');
+          scheduleSave();
+        });
+      });
+
+      // native date pickers (startDate/endDate)
+      slot.querySelectorAll<HTMLInputElement>('input[type="date"][data-editable]').forEach((el) => {
+        el.addEventListener('input', () => {
+          const target = fieldOf(el);
+          if (!target) return;
+          const entry = working.get(target.id);
+          if (!entry) return;
+          (entry as unknown as Record<string, unknown>)[target.field] = el.value.length > 0 ? el.value : null;
           reportStatus('dirty');
           scheduleSave();
         });
@@ -162,19 +204,72 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       // append to the grid itself rather than insertBefore(addBtn).
       list.appendChild(slot);
 
-      const newEntry: Entry = { id, slug: slugify(`entry-${id}`), eyebrow: 'New entry', title: 'Untitled', body: '' };
+      // Truly empty seed (product-owner-20260717T200000 Decision 4) —
+      // category/title/body start as empty strings (shown via the
+      // :empty::before CSS hint, never a literal placeholder string the
+      // user has to delete). `slug` is not a user-facing field here, so it
+      // is auto-derived from the entry id (invisible, schema-valid) rather
+      // than left empty, which would fail the server's slug min-length
+      // validation on save.
+      const newEntry: Entry = {
+        id,
+        slug: slugify(`entry-${id}`),
+        category: '',
+        startDate: null,
+        endDate: null,
+        title: '',
+        body: '',
+      };
       working.set(id, newEntry);
       wireSlot(slot);
       reportStatus('dirty');
       scheduleSave();
 
-      const titleEl = slot.querySelector<HTMLElement>('[data-editable$=".title"]');
-      titleEl?.focus();
+      const categoryEl = slot.querySelector<HTMLElement>('[data-editable$=".category"]');
+      categoryEl?.focus();
     });
 
     window.addEventListener('editor:save-all', () => {
       void doSave();
     });
+  }
+
+  // --- Empty-state message (product-owner-20260717T200000 Decision 3) ---
+  if (area) {
+    const areaName: 'projects' | 'experience' = area;
+    const emptyStateEl = document.getElementById(`empty-state-text-${areaName}`) as HTMLInputElement | null;
+    if (emptyStateEl) {
+      const seedEmptyStates = (
+        window as unknown as { __editorSeed: { emptyStates?: { projects: string; experience: string; blog: string; contact: string } } }
+      ).__editorSeed.emptyStates ?? { projects: '', experience: '', blog: '', contact: '' };
+      const workingEmptyStates = { ...seedEmptyStates };
+
+      let esStatus: SaveStatus = 'idle';
+      function reportEsStatus(next: SaveStatus) {
+        esStatus = next;
+        window.dispatchEvent(
+          new CustomEvent('editor:area-status', { detail: { status: esStatus, label: statusLabel(esStatus) } })
+        );
+      }
+
+      async function saveEmptyStates() {
+        reportEsStatus('saving');
+        const result = await saveArea('emptyStates', workingEmptyStates);
+        reportEsStatus(result.ok ? 'saved' : 'error');
+      }
+
+      const scheduleEsSave = debounce(saveEmptyStates, 1500);
+
+      emptyStateEl.addEventListener('input', () => {
+        workingEmptyStates[areaName] = emptyStateEl.value;
+        reportEsStatus('dirty');
+        scheduleEsSave();
+      });
+
+      window.addEventListener('editor:save-all', () => {
+        void saveEmptyStates();
+      });
+    }
   }
 </script>
 
@@ -186,5 +281,11 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
 
   template {
     display: none;
+  }
+
+  .editor-note {
+    max-width: 65ch;
+    font-size: 0.85rem;
+    color: var(--slate);
   }
 </style>

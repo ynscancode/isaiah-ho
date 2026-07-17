@@ -2,9 +2,11 @@
 import { getEntry } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
+import { bodyToHtml } from '../lib/plainText';
 
 const aboutEntry = await getEntry('site', 'about');
 const about = aboutEntry!.data;
+const bodyHtml = bodyToHtml(about.body ?? '');
 ---
 
 <BaseLayout
@@ -13,11 +15,17 @@ const about = aboutEntry!.data;
 >
   <Band variant="ink" eyebrow="01 — About">
     <h1>About</h1>
-    <div class="prose">
-      <p class="lede">
-        {about.lede}
-      </p>
-      {about.paragraphs!.map((paragraph) => <p>{paragraph}</p>)}
+    <div class="about-layout">
+      <div class="prose" set:html={bodyHtml} />
+      <div class="about-portrait">
+        {about.image ? (
+          <img src={about.image} alt="Isaiah Ho" width="600" height="750" />
+        ) : (
+          <div class="about-portrait-placeholder" aria-hidden="true">
+            <span class="mono">IH</span>
+          </div>
+        )}
+      </div>
     </div>
   </Band>
 </BaseLayout>
@@ -28,16 +36,59 @@ const about = aboutEntry!.data;
     margin: 0 0 2rem;
   }
 
-  .prose {
-    max-width: 65ch;
+  .about-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 300px);
+    gap: 3rem;
+    align-items: start;
+  }
+  .prose { order: 1; max-width: 65ch; }
+  .about-portrait { order: 2; }
+
+  .about-portrait img,
+  .about-portrait-placeholder {
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    display: block;
+  }
+  .about-portrait-placeholder {
+    background: rgba(245, 243, 238, 0.04); /* faint paper tint on the ink band */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .about-portrait-placeholder span {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 2rem;
+    letter-spacing: 0.05em;
+    color: var(--signal);
+    opacity: 0.6;
   }
 
-  .lede {
+  /* First paragraph keeps the existing "lede" treatment (larger, muted) purely
+     via :global(:first-of-type) — the schema no longer has a separate lede
+     field (tech-lead Decision C merged lede+paragraphs into one `body`), but
+     the visual rhythm the site already had is preserved with zero schema
+     cost. Needs :global() because bodyHtml is injected via set:html. */
+  .prose :global(p:first-of-type) {
     font-size: 1.1rem;
     color: #c9ccd9;
   }
+  .prose :global(p) { margin: 0 0 1.2rem; }
 
-  .prose p {
-    margin: 0 0 1.2rem;
+  @media (max-width: 640px) {
+    .about-layout {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+    .about-portrait { order: -1; } /* portrait visually leads on mobile, DOM stays text-first */
+    .about-portrait img,
+    .about-portrait-placeholder {
+      max-width: 320px;
+      margin: 0 auto;
+    }
   }
 </style>

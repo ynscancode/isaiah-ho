@@ -17,6 +17,8 @@ const ctaSchema = z.object({
   href: z.string(),
 });
 
+const contactLinkType = z.enum(['email', 'linkedin', 'github', 'other']);
+
 const site = defineCollection({
   loader: file('src/data/site.json'),
   schema: z.object({
@@ -31,12 +33,28 @@ const site = defineCollection({
       })
       .optional(),
     // "about" entry
+    // `lede` is ALSO used by the "contact" entry (kept there), so it stays
+    // valid on the shared union schema even though it's no longer an about
+    // field on its own — only `paragraphs` was fully removed.
     lede: z.string().optional(),
-    paragraphs: z.array(z.string()).optional(),
+    body: z.string().optional(),
+    image: z.string().nullable().optional(),
     // "contact" entry
-    email: z.string().nullable().optional(),
-    linkedin: z.string().nullable().optional(),
-    github: z.string().nullable().optional(),
+    links: z
+      .array(
+        z.object({
+          id: z.string(),
+          type: contactLinkType,
+          label: z.string(),
+          value: z.string(),
+        })
+      )
+      .optional(),
+    // "emptyStates" entry
+    projects: z.string().optional(),
+    experience: z.string().optional(),
+    blog: z.string().optional(),
+    contact: z.string().optional(),
   }),
 });
 
@@ -45,7 +63,9 @@ const projects = defineCollection({
   schema: z.object({
     id: z.string(),
     slug: z.string(),
-    eyebrow: z.string(),
+    category: z.string(),
+    startDate: z.string().nullable(),
+    endDate: z.string().nullable(),
     title: z.string(),
     body: z.string(),
     href: z.string().optional(),
@@ -57,7 +77,9 @@ const experience = defineCollection({
   schema: z.object({
     id: z.string(),
     slug: z.string(),
-    eyebrow: z.string(),
+    category: z.string(),
+    startDate: z.string().nullable(),
+    endDate: z.string().nullable(),
     title: z.string(),
     body: z.string(),
     href: z.string().optional(),

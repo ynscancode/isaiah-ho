@@ -1,6 +1,8 @@
 ---
 export type Props = {
-  eyebrow: string;
+  /** Required on the public (non-editable) branch; unused in editable mode,
+   * which instead renders the category/date-picker fields below. */
+  eyebrow?: string;
   title: string;
   body: string;
   href?: string;
@@ -16,9 +18,28 @@ export type Props = {
   editable?: boolean;
   editablePrefix?: string;
   removable?: boolean;
+  /** Editable-mode-only fields (product-owner-20260717T200000 Decision 2 /
+   * ui-ux-designer-20260717T210000 section 4). Public callers keep passing
+   * the derived `eyebrow` string exactly as before — these are unused on
+   * the non-editable branch. */
+  category?: string;
+  startDate?: string | null;
+  endDate?: string | null;
 };
 
-const { eyebrow, title, body, href, tags = [], editable = false, editablePrefix = '', removable = false } = Astro.props;
+const {
+  eyebrow = '',
+  title,
+  body,
+  href,
+  tags = [],
+  editable = false,
+  editablePrefix = '',
+  removable = false,
+  category = '',
+  startDate = null,
+  endDate = null,
+} = Astro.props;
 const Tag = editable ? 'div' : href ? 'a' : 'div';
 ---
 
@@ -32,17 +53,36 @@ const Tag = editable ? 'div' : href ? 'a' : 'div';
       Remove
     </button>
   )}
-  <span
-    class="mono card-eyebrow"
-    data-editable={editable ? `${editablePrefix}.eyebrow` : undefined}
-    contenteditable={editable ? 'true' : undefined}
-  >{eyebrow}</span>
+  {editable ? (
+    <>
+      <span
+        class="mono card-eyebrow"
+        contenteditable="true"
+        data-editable={`${editablePrefix}.category`}
+        data-placeholder="e.g. Internship, Case competition, Leadership"
+      >{category}</span>
+      <div class="editor-inline-controls card-date-fields">
+        <div>
+          <label class="editor-field-label mono">Start</label>
+          <input type="date" class="editor-input card-date-input" value={startDate ?? ''} data-editable={`${editablePrefix}.startDate`} />
+        </div>
+        <div>
+          <label class="editor-field-label mono">End</label>
+          <input type="date" class="editor-input card-date-input" value={endDate ?? ''} data-editable={`${editablePrefix}.endDate`} />
+        </div>
+      </div>
+    </>
+  ) : (
+    <span class="mono card-eyebrow">{eyebrow}</span>
+  )}
   <h3
     data-editable={editable ? `${editablePrefix}.title` : undefined}
+    data-placeholder={editable ? 'Untitled' : undefined}
     contenteditable={editable ? 'true' : undefined}
   >{title}</h3>
   <p
     data-editable={editable ? `${editablePrefix}.body` : undefined}
+    data-placeholder={editable ? 'One or two sentences on scope and impact.' : undefined}
     contenteditable={editable ? 'true' : undefined}
   >{body}</p>
   {editable && (
