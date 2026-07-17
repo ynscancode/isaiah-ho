@@ -1,10 +1,8 @@
 ---
-# TODO(isaiah): this is a placeholder post seeded to exercise the /blog index,
-# [slug] route, and RSS feed. Replace title/description/date/body with real
-# writing, or delete this file once you have real posts.
 title: "What case interviews actually teach you"
 description: "Notes on structured problem-solving beyond the interview room."
-date: 2026-07-10
+date: "2026-07-10"
+draft: false
 tags: ["consulting", "case-interviews"]
 ---
 
