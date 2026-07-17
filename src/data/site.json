@@ -4,8 +4,14 @@
       "eyebrow": "SMU · Business · Strategy & Consulting",
       "headlineHtml": "Structured thinking,<br>applied to real problems.",
       "lede": "I'm Isaiah Ho, a business student at Singapore Management University building toward a career in strategy consulting. This is where I write, build, and think out loud.",
-      "primaryCta": { "label": "Experience", "href": "/experience" },
-      "ghostCta": { "label": "View projects", "href": "/projects" }
+      "primaryCta": {
+        "label": "Experience",
+        "href": "/experience"
+      },
+      "ghostCta": {
+        "label": "View projects",
+        "href": "/projects"
+      }
     }
   },
   "about": {
@@ -18,7 +24,7 @@
   "contact": {
     "lede": "The fastest way to reach me is email.",
     "email": "isaiahho815@gmail.com",
-    "linkedin": null,
+    "linkedin": "www.linkedin.com/in/isaiah-ho-a9955537a",
     "github": null
   }
 }
