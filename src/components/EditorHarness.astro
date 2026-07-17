@@ -308,4 +308,26 @@
     statusText.textContent = detail.label;
     statusText.dataset.status = detail.status;
   });
+
+  // Fired by src/lib/editor/client.ts whenever a mutating /api/** call
+  // (save, ensure-draft, delete, publish, logout) gets back the server's
+  // CSRF-invalid contract (403, { error: "csrf_invalid", action: "reauth" }
+  // — see senior-backend-dev-20260717T010600). Distinct from a generic
+  // save failure: the fix isn't "try again", it's "log in again". Replaces
+  // whatever the toolbar message currently shows with a clear explanation
+  // and a real recovery link back into the editor post-login.
+  window.addEventListener('editor:reauth-needed', () => {
+    if (statusText) {
+      statusText.textContent = 'Session expired';
+      statusText.dataset.status = 'error';
+    }
+    if (message) {
+      message.textContent = '';
+      message.append('Your session expired — log in again to keep editing. ');
+      const link = document.createElement('a');
+      link.href = '/api/auth/login?redirect_to=/edit';
+      link.textContent = 'Log in again';
+      message.appendChild(link);
+    }
+  });
 </script>

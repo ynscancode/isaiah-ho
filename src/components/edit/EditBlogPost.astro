@@ -45,8 +45,11 @@ const { post, isNew } = Astro.props;
     <label class="editor-field-label mono" for="post-tags">Tags (comma-separated)</label>
     <input id="post-tags" class="editor-input" type="text" value={post.tags.join(', ')} data-editable="tags" />
 
-    <label class="editor-field-label mono" for="post-body">Body (markdown)</label>
+    <label class="editor-field-label mono" for="post-body">Body</label>
     <textarea id="post-body" class="editor-textarea" data-editable="body">{post.body}</textarea>
+    <p class="editor-note">
+      Line breaks and blank lines are preserved as written — no special formatting needed.
+    </p>
 
     {!isNew && (
       <p class="editor-note">

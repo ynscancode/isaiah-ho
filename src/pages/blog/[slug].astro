@@ -1,5 +1,5 @@
 ---
-import { getCollection, render } from 'astro:content';
+import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Band from '../../components/Band.astro';
 
@@ -12,7 +12,35 @@ export async function getStaticPaths() {
 }
 
 const { post } = Astro.props;
-const { Content } = await render(post);
+
+// Body is stored as plain text, not markdown (product-owner-20260717T170000
+// ISSUE B, AC7) — the editor's Body field makes no markdown promises, so
+// this must not run the body through Astro's remark/markdown pipeline.
+// Escape HTML first (so <, >, &, ", ' and any markdown-looking characters
+// always render literally — AC4, closes ARCH-0005 advisory A2's raw-HTML
+// passthrough), THEN wrap blank-line-separated blocks as <p> and convert
+// single newlines within a block to <br> (AC2/AC3). The set:html string
+// below is built ONLY from this escaped-then-wrapped output — the raw body
+// is never passed to set:html directly.
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;') // must run first — escaping others would double-escape their entities
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function bodyToHtml(rawBody: string): string {
+  const escaped = escapeHtml(rawBody.trim());
+  return escaped
+    .split(/\n{2,}/) // blank-line-separated blocks -> paragraphs
+    .map((block) => block.split('\n').join('<br>')) // single newlines -> line breaks within a paragraph
+    .map((block) => `<p>${block}</p>`)
+    .join('');
+}
+
+const bodyHtml = bodyToHtml(post.body);
 
 const dateFormatter = new Intl.DateTimeFormat('en-SG', {
   month: 'long',
@@ -33,9 +61,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', {
       </ul>
     )}
     <h1>{post.data.title}</h1>
-    <div class="prose">
-      <Content />
-    </div>
+    <div class="prose" set:html={bodyHtml} />
   </Band>
 </BaseLayout>
 
