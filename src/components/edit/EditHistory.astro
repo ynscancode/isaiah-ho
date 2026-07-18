@@ -136,7 +136,7 @@ import Band from '../Band.astro';
 
     const msg = document.createElement('span');
     msg.className = 'history-row-message';
-    msg.textContent = commit.message;
+    msg.textContent = commit.message.split('\n')[0].trim();
     li.appendChild(msg);
 
     const time = document.createElement('span');
@@ -277,6 +277,9 @@ import Band from '../Band.astro';
     list-style: none;
     padding: 0;
   }
+</style>
+
+<style is:global>
   .history-row {
     display: flex;
     align-items: center;
