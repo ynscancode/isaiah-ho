@@ -3,7 +3,7 @@ import {
   getFileOnBranch,
   putFileOnBranch,
   deleteFileOnBranch,
-  ensureBranch,
+  ensureDraftBranchSynced,
 } from '../../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, COMMIT_AUTHOR, MASTER_BRANCH } from '../../../lib/gitConfig';
 import {
@@ -15,6 +15,8 @@ import {
   blogPostBodySchema,
   emptyStatesBodySchema,
 } from '../../../lib/schemas';
+import { SITE_JSON_PATH, PROJECTS_JSON_PATH, EXPERIENCE_JSON_PATH, BLOG_DIR } from '../../../lib/contentPaths';
+import { buildBlogMarkdown } from '../../../lib/blogMarkdown';
 
 export const prerender = false;
 
@@ -22,10 +24,6 @@ export const prerender = false;
 // (never derived from caller input) EXCEPT the blog per-post filename, which
 // is derived from a slug that's regex-validated (schemas.ts `slugSchema`) to
 // forbid path separators/traversal, then re-checked below before use.
-const SITE_JSON_PATH = 'src/data/site.json';
-const PROJECTS_JSON_PATH = 'src/data/projects.json';
-const EXPERIENCE_JSON_PATH = 'src/data/experience.json';
-const BLOG_DIR = 'src/content/blog/';
 
 type Area = 'home' | 'about' | 'contact' | 'projects' | 'experience' | 'blog' | 'emptyStates';
 const VALID_AREAS: readonly Area[] = [
@@ -37,12 +35,6 @@ const VALID_AREAS: readonly Area[] = [
   'blog',
   'emptyStates',
 ];
-
-// Matches the server-derived about-image path shape exactly
-// (src/pages/api/upload/about-image.ts, tech-lead-20260717T044343 Decision
-// A) — used here to defense-in-depth re-validate before ever building a
-// filesystem/commit path from a stored value, and to gate orphan cleanup.
-const ABOUT_IMAGE_PATH_RE = /^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/;
 
 function isValidArea(value: string): value is Area {
   return (VALID_AREAS as readonly string[]).includes(value);
@@ -72,32 +64,6 @@ function fromBase64(b64: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-function yamlString(value: string): string {
-  return JSON.stringify(value);
-}
-
-function buildBlogMarkdown(body: {
-  title: string;
-  description: string;
-  date: string;
-  draft?: boolean;
-  tags?: string[];
-  body: string;
-}): string {
-  const lines = [
-    '---',
-    `title: ${yamlString(body.title)}`,
-    `description: ${yamlString(body.description)}`,
-    `date: ${yamlString(body.date)}`,
-    `draft: ${body.draft ? 'true' : 'false'}`,
-    `tags: [${(body.tags ?? []).map(yamlString).join(', ')}]`,
-    '---',
-    '',
-    body.body,
-  ];
-  return lines.join('\n');
-}
-
 export const POST: APIRoute = async ({ params, request }) => {
   const areaParam = params.area ?? '';
   if (!isValidArea(areaParam)) {
@@ -115,7 +81,7 @@ export const POST: APIRoute = async ({ params, request }) => {
   const token = getWriteToken();
   const ref = getRepoRef();
   const branch = getDraftBranch();
-  await ensureBranch(token, ref, branch, MASTER_BRANCH);
+  await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
 
   try {
     if (area === 'home' || area === 'about' || area === 'contact' || area === 'emptyStates') {
@@ -128,13 +94,6 @@ export const POST: APIRoute = async ({ params, request }) => {
       }
       const siteData = JSON.parse(fromBase64(existing.contentBase64)) as Record<string, unknown>;
 
-      // Captured before any overwrite below, used only by the about branch
-      // for orphan-image disposal (KB-0014) after a successful write.
-      const prevAboutImage =
-        area === 'about' && siteData.about && typeof siteData.about === 'object'
-          ? ((siteData.about as { image?: unknown }).image ?? null)
-          : null;
-
       if (area === 'home') {
         const parsed = heroBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
@@ -142,7 +101,14 @@ export const POST: APIRoute = async ({ params, request }) => {
       } else if (area === 'about') {
         const parsed = aboutBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
-        siteData.about = parsed.data;
+        const draftImage = (siteData.about && typeof siteData.about === 'object')
+          ? ((siteData.about as { image?: unknown }).image ?? null) : null;
+        if (parsed.data.baseImage !== draftImage) {
+          return new Response(JSON.stringify({ error: 'stale_form', action: 'reload' }),
+            { status: 409, headers: { 'content-type': 'application/json' } });
+        }
+        const { baseImage: _drop, ...aboutData } = parsed.data;
+        siteData.about = aboutData;
       } else if (area === 'contact') {
         const parsed = contactBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
@@ -163,32 +129,11 @@ export const POST: APIRoute = async ({ params, request }) => {
         author: COMMIT_AUTHOR,
       });
 
-      // Orphan disposal (KB-0014, tech-lead Decision A): if the about save
-      // just replaced a previously-referenced image with a different one (or
-      // removed it), delete the old file on the draft branch so it doesn't
-      // linger unreferenced. Lives in the authoritative reference writer
-      // (here), not the upload endpoint. Best-effort: a failure here must not
-      // fail the content save that already succeeded.
-      if (area === 'about' && typeof prevAboutImage === 'string' && ABOUT_IMAGE_PATH_RE.test(prevAboutImage)) {
-        const newImage = (siteData.about as { image: unknown }).image;
-        if (newImage !== prevAboutImage) {
-          try {
-            const oldPath = `public${prevAboutImage}`;
-            const oldFile = await getFileOnBranch(token, ref, oldPath, branch);
-            if (oldFile) {
-              await deleteFileOnBranch(token, ref, {
-                path: oldPath,
-                branch,
-                sha: oldFile.sha,
-                message: `Remove orphaned about image: ${prevAboutImage}`,
-                author: COMMIT_AUTHOR,
-              });
-            }
-          } catch (err) {
-            console.error('orphaned about-image delete failed (non-fatal)', err);
-          }
-        }
-      }
+      // Orphan-image disposal removed (RC3 fix, tech-lead-20260717T090321
+      // Decision 3a): deleting the old image reclaimed NOTHING (git keeps
+      // the blob regardless — that's how the destroyed photo was
+      // recovered), so it only ever risked destroying irreplaceable user
+      // content for cosmetic tidiness. Do not reinstate.
 
       return new Response(JSON.stringify({ commitSha }), {
         status: 200,
@@ -300,7 +245,7 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   const token = getWriteToken();
   const ref = getRepoRef();
   const branch = getDraftBranch();
-  await ensureBranch(token, ref, branch, MASTER_BRANCH);
+  await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
 
   const path = `${BLOG_DIR}${slugResult.data.slug}.md`;
   if (!path.startsWith(BLOG_DIR) || path.includes('..')) {

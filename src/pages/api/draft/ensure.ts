@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { ensureBranch } from '../../../lib/github';
+import { ensureDraftBranchSynced } from '../../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, buildPreviewUrl, MASTER_BRANCH } from '../../../lib/gitConfig';
 
 export const prerender = false;
@@ -11,10 +11,14 @@ export const POST: APIRoute = async () => {
     const ref = getRepoRef();
     const branch = getDraftBranch();
 
-    const headSha = await ensureBranch(token, ref, branch, MASTER_BRANCH);
+    const { headSha, syncState } = await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
 
+    // tech-lead-20260717T090321 Decision 1b: all four syncState values
+    // return 200 here — a merge conflict means the preview build is
+    // unreliable, not that the user's draft is invalid. Never block editing
+    // to protect a preview. The toolbar surfaces a warning on 'conflict'.
     return new Response(
-      JSON.stringify({ branch, headSha, previewUrl: buildPreviewUrl(branch) }),
+      JSON.stringify({ branch, headSha, previewUrl: buildPreviewUrl(branch), syncState }),
       { status: 200, headers: { 'content-type': 'application/json' } }
     );
   } catch (err) {

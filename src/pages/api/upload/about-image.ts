@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { getFileOnBranch, putFileOnBranch, ensureBranch } from '../../../lib/github';
+import { getFileOnBranch, putFileOnBranch, ensureDraftBranchSynced } from '../../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, COMMIT_AUTHOR, MASTER_BRANCH } from '../../../lib/gitConfig';
 
 export const prerender = false;
@@ -126,7 +126,13 @@ export const POST: APIRoute = async ({ request }) => {
   const branch = getDraftBranch();
 
   try {
-    await ensureBranch(token, ref, branch, MASTER_BRANCH);
+    // ensureBranch -> ensureDraftBranchSynced (tech-lead-20260717T090321
+    // Decision 1, RC1 fix) — not one of the spec's explicitly enumerated
+    // call sites, but it's a 4th caller of the deleted single-caller
+    // function, so it must move too or the build breaks. Return value
+    // (syncState) isn't surfaced here; a stale-preview warning belongs to
+    // the content-editing surface, not the image upload endpoint.
+    await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
 
     // Content-hash naming makes every distinct image a unique path, so a
     // re-upload of identical bytes would otherwise hit a 422 sha-conflict on

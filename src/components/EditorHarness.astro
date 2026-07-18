@@ -7,15 +7,29 @@
 // own <style> blocks on purpose so public pages' compiled CSS never grows a
 // single byte from this feature. This component is only ever imported by
 // src/pages/edit/[...path].astro (prerender=false, session-gated).
+
+export type Props = {
+  contentSource?: 'draft' | 'master' | 'build';
+};
+
+const { contentSource } = Astro.props;
 ---
 
 <div id="editor-toolbar" class="editor-toolbar" role="region" aria-label="Content editor controls">
+  {contentSource === 'build' && (
+    <p id="editor-readonly-banner" class="editor-toolbar-banner" role="alert">
+      Can't reach GitHub — showing the last published content. Editing is disabled.
+    </p>
+  )}
+  <div id="editor-conflict-banner" class="editor-toolbar-banner" role="alert" hidden>
+    Preview is out of sync with the site code — publish or ask for help.
+  </div>
   <div class="editor-toolbar-status">
     <strong>Editing draft</strong>
     <span id="editor-status-text" data-status="idle">No changes</span>
   </div>
   <div class="editor-toolbar-actions">
-    <button type="button" id="editor-save-btn" class="editor-btn editor-btn-primary">Save to draft</button>
+    <button type="button" id="editor-save-btn" class="editor-btn editor-btn-primary" disabled={contentSource === 'build'}>Save to draft</button>
     <button type="button" id="editor-preview-btn" class="editor-btn">Preview</button>
     <button type="button" id="editor-publish-btn" class="editor-btn editor-btn-publish">Publish</button>
     <button type="button" id="editor-logout-btn" class="editor-btn editor-btn-ghost">Log out</button>
@@ -117,6 +131,31 @@
 
   .editor-toolbar-message a {
     color: var(--signal, #c87f0a);
+  }
+
+  .editor-toolbar-banner {
+    flex-basis: 100%;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: 2px;
+    font-size: 0.8rem;
+    background: rgba(200, 127, 10, 0.18);
+    border: 1px solid var(--signal, #c87f0a);
+    color: var(--paper, #f5f3ee);
+  }
+
+  #editor-readonly-banner {
+    background: rgba(192, 57, 43, 0.18);
+    border-color: #ff9c9c;
+  }
+
+  /* Set on <html> when contentSource === 'build' (see script below) so
+     editor-only affordances in Hero.astro / Card.astro can also style
+     themselves as read-only if needed — a UX affordance only, not the
+     trust boundary (KB-0017); the server guard is the real protection. */
+  html[data-editor-readonly="true"] [contenteditable="true"] {
+    pointer-events: none;
+    opacity: 0.7;
   }
 
   /* --- Editor-only affordances rendered inside Hero.astro / Card.astro --- */
@@ -269,14 +308,39 @@
 
   const statusText = document.getElementById('editor-status-text');
   const message = document.getElementById('editor-message');
-  const saveBtn = document.getElementById('editor-save-btn');
+  const saveBtn = document.getElementById('editor-save-btn') as HTMLButtonElement | null;
   const previewBtn = document.getElementById('editor-preview-btn');
   const publishBtn = document.getElementById('editor-publish-btn');
   const logoutBtn = document.getElementById('editor-logout-btn');
+  const conflictBanner = document.getElementById('editor-conflict-banner');
 
   function setMessage(text: string) {
     if (message) message.textContent = text;
   }
+
+  // contentSource === 'build' read-only affordance (UX only — KB-0017; the
+  // server guard is the real trust boundary). #editor-readonly-banner's
+  // presence in the DOM is the server-rendered signal; mirror it onto
+  // <html> so any editor-only affordance elsewhere can key off it too.
+  if (document.getElementById('editor-readonly-banner')) {
+    document.documentElement.dataset.editorReadonly = 'true';
+    if (saveBtn) saveBtn.disabled = true;
+  }
+
+  // RC1 draft-sync conflict banner (tech-lead-20260717T090321 Decision 1 /
+  // senior-backend-dev-20260717T180600): ensureDraft() (called from
+  // saveArea() in every view's first save of the session) dispatches this
+  // once it knows the server's syncState. Never auto-resolved — the user
+  // has to publish or get help.
+  window.addEventListener('editor:draft-sync-state', (event) => {
+    const detail = (event as CustomEvent<{ syncState: string }>).detail;
+    if (!conflictBanner || !detail) return;
+    if (detail.syncState === 'conflict') {
+      conflictBanner.removeAttribute('hidden');
+    } else {
+      conflictBanner.setAttribute('hidden', '');
+    }
+  });
 
   // Views (EditHome/EditAbout/etc.) update this element's data-status /
   // textContent directly and listen for `editor:save-all`.

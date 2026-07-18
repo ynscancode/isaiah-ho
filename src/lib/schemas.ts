@@ -50,6 +50,15 @@ export const aboutBodySchema = z.object({
     .string()
     .regex(/^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/)
     .nullable(),
+  // The image path the client's form was loaded with (RC3 3b, tech-lead-
+  // 20260717T090321). Compared server-side against the freshly-read draft
+  // value before write — never trusted on its own (KB-0017) — so a save
+  // based on a stale page can never silently clobber an image change made
+  // since the form was loaded. Stripped before persisting to site.json.
+  baseImage: z
+    .string()
+    .regex(/^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/)
+    .nullable(),
 });
 
 // Contact link model (product-owner-20260717T200000 Decision 1, tech-lead-

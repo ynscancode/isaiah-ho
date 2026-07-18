@@ -47,20 +47,37 @@ async function parseJsonSafe<T>(res: Response): Promise<T | null> {
   }
 }
 
+export type DraftSyncState = 'created' | 'merged' | 'up-to-date' | 'conflict';
+
+/** Last syncState reported by ensureDraft()'s server call this page load, if
+ * any. Exposed so EditorHarness.astro can show a conflict banner without
+ * every caller having to thread the return value through. */
+export let lastDraftSyncState: DraftSyncState | null = null;
+
 /** Idempotent — safe to call before every first-save-of-session. Only
- * actually hits the network once per page load. */
-export async function ensureDraft(): Promise<void> {
-  if (draftEnsured) return;
+ * actually hits the network once per page load. Returns the server's
+ * reported syncState (senior-backend-dev-20260717T180600 RC1), or null if
+ * the call failed or was skipped because a draft was already ensured. */
+export async function ensureDraft(): Promise<DraftSyncState | null> {
+  if (draftEnsured) return lastDraftSyncState;
   const res = await fetch('/api/draft/ensure', {
     method: 'POST',
     headers: { 'X-CSRF-Token': getCsrfToken() },
   });
   if (res.ok) {
     draftEnsured = true;
-    return;
+    const data = await parseJsonSafe<{ syncState?: DraftSyncState }>(res);
+    lastDraftSyncState = data?.syncState ?? null;
+    if (lastDraftSyncState) {
+      window.dispatchEvent(
+        new CustomEvent('editor:draft-sync-state', { detail: { syncState: lastDraftSyncState } })
+      );
+    }
+    return lastDraftSyncState;
   }
   const data = await parseJsonSafe<{ error?: string; action?: string }>(res);
   checkReauthNeeded(res.status, data);
+  return null;
 }
 
 export async function saveArea(area: string, body: unknown): Promise<SaveResult> {

@@ -25,6 +25,7 @@ const { about } = Astro.props;
       <button type="button" class="editor-btn" id="about-image-upload-btn">Upload photo</button>
       <button type="button" class="editor-btn editor-btn-ghost" id="about-image-remove-btn" hidden={!about.image}>Remove photo</button>
       <p class="editor-note" id="about-image-status" role="status" aria-live="polite"></p>
+      <button type="button" class="editor-btn" id="about-reload-btn" hidden>Reload page</button>
     </div>
   </div>
 
@@ -59,6 +60,16 @@ const { about } = Astro.props;
       image: seedImage ?? null,
     };
 
+    // Optimistic-concurrency base value — the image the form was rendered
+    // from. Advanced ONLY after a confirmed successful save (see doSave()),
+    // never in the upload/remove handlers directly. This is the RC3 guard
+    // (tech-lead-20260717T090321 / senior-backend-dev-20260717T180600): the
+    // server compares this against the current draft value and 409s with
+    // stale_form if they've diverged, so a stale page can't clobber a newer
+    // draft. Advancing only on confirmation keeps a 2nd upload in the same
+    // session working while a truly stale page stays blocked until reload.
+    let baseImage: string | null = seedImage ?? null;
+
     let status: SaveStatus = 'idle';
     function reportStatus(next: SaveStatus) {
       status = next;
@@ -69,8 +80,19 @@ const { about } = Astro.props;
 
     async function doSave() {
       reportStatus('saving');
-      const result = await saveArea(AREA, working);
-      reportStatus(result.ok ? 'saved' : 'error');
+      const result = await saveArea(AREA, { ...working, baseImage });
+      if (result.ok) {
+        baseImage = working.image;
+        reportStatus('saved');
+        return;
+      }
+      if (result.error === 'stale_form') {
+        setImageStatus('This page is out of date — reload to see your current draft.', 'error');
+        reportStatus('error');
+        showReloadControl();
+        return;
+      }
+      reportStatus('error');
     }
 
     const scheduleSave = debounce(doSave, 1500);
@@ -97,6 +119,15 @@ const { about } = Astro.props;
     const removeBtn = document.getElementById('about-image-remove-btn') as HTMLButtonElement | null;
     const preview = document.getElementById('about-image-preview');
     const statusEl = document.getElementById('about-image-status');
+    const reloadBtn = document.getElementById('about-reload-btn') as HTMLButtonElement | null;
+
+    function showReloadControl() {
+      reloadBtn?.removeAttribute('hidden');
+    }
+
+    reloadBtn?.addEventListener('click', () => {
+      location.reload();
+    });
 
     function setImageStatus(text: string, tone?: 'ok' | 'error') {
       if (!statusEl) return;

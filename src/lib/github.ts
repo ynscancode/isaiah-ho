@@ -100,33 +100,70 @@ export async function getBranchHeadSha(
   return data.object.sha;
 }
 
-/** Ensure `branch` exists, creating it from `fromBranch`'s current HEAD if missing.
- * Returns the branch's head sha (existing or newly created). */
-export async function ensureBranch(
+export type DraftSyncState = 'created' | 'merged' | 'up-to-date' | 'conflict';
+
+/** Ensure `branch` exists AND tracks `fromBranch` (tech-lead-20260717T090321
+ * Decision 1, RC1 fix). Replaces the old `ensureBranch`, which early-returned
+ * on an existing branch and never synced it — the root cause of the draft
+ * running stale code against new-schema content. Single-caller-pattern
+ * replacement: `ensureBranch` is deleted, this is the only entry point.
+ *
+ * Missing branch: create from `fromBranch` HEAD exactly as before, return
+ * `syncState: 'created'`. Existing branch: merge `fromBranch` INTO `branch`
+ * via the existing `mergeBranches` (base/head are the REVERSE of
+ * publish.ts's usage — publish merges draft into master, this merges master
+ * into draft). Both refs are still fixed server constants, never
+ * caller-supplied — the no-arbitrary-ref property is preserved. No force, no
+ * reset, no branch deletion in this path (KB-0019: a rejection is a report,
+ * not an obstacle to bulldoze) — a conflict is returned, never
+ * auto-resolved. */
+export async function ensureDraftBranchSynced(
   token: string,
   ref: RepoRef,
   branch: string,
   fromBranch: string
-): Promise<string> {
+): Promise<{ headSha: string; syncState: DraftSyncState }> {
   const existing = await getBranchHeadSha(token, ref, branch);
-  if (existing) return existing;
 
-  const baseSha = await getBranchHeadSha(token, ref, fromBranch);
-  if (!baseSha) {
-    throw new GitHubApiError(`Base branch ${fromBranch} not found`, 404);
+  if (!existing) {
+    const baseSha = await getBranchHeadSha(token, ref, fromBranch);
+    if (!baseSha) {
+      throw new GitHubApiError(`Base branch ${fromBranch} not found`, 404);
+    }
+    const res = await githubFetch(token, `/repos/${ref.owner}/${ref.repo}/git/refs`, {
+      method: 'POST',
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: baseSha }),
+    });
+    if (!res.ok && res.status !== 422) {
+      // 422 = ref already exists (race with a concurrent ensure call) — treat as success.
+      throw new GitHubApiError(`Failed to create branch ${branch}`, res.status);
+    }
+    const head = await getBranchHeadSha(token, ref, branch);
+    if (!head) throw new GitHubApiError(`Branch ${branch} missing after create`, 500);
+    return { headSha: head, syncState: 'created' };
   }
 
-  const res = await githubFetch(token, `/repos/${ref.owner}/${ref.repo}/git/refs`, {
-    method: 'POST',
-    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: baseSha }),
+  const mergeResult = await mergeBranches(token, ref, {
+    base: branch,
+    head: fromBranch,
+    commitMessage: 'Sync master into editor-draft',
   });
-  if (!res.ok && res.status !== 422) {
-    // 422 = ref already exists (race with a concurrent ensure call) — treat as success.
-    throw new GitHubApiError(`Failed to create branch ${branch}`, res.status);
+
+  if (!mergeResult.merged) {
+    // Conflict is NOT fatal and must NOT block editing (Decision 1b) — the
+    // draft's content is still valid and still the user's; a conflict only
+    // means the preview build is unreliable. Caller returns 200 with this
+    // syncState, never a failure.
+    return { headSha: existing, syncState: 'conflict' };
   }
-  const head = await getBranchHeadSha(token, ref, branch);
-  if (!head) throw new GitHubApiError(`Branch ${branch} missing after create`, 500);
-  return head;
+
+  if (mergeResult.sha === existing) {
+    // 204 from mergeBranches ("nothing to merge") resolves to the base's
+    // own current sha, which is `existing` — no new commit was made.
+    return { headSha: existing, syncState: 'up-to-date' };
+  }
+
+  return { headSha: mergeResult.sha, syncState: 'merged' };
 }
 
 export type GetFileResult = { sha: string; contentBase64: string } | null;
@@ -145,6 +182,36 @@ export async function getFileOnBranch(
   if (!res.ok) throw new GitHubApiError(`Failed to read ${path}@${branch}`, res.status);
   const data = (await res.json()) as { sha: string; content: string };
   return { sha: data.sha, contentBase64: data.content };
+}
+
+export type DirectoryEntry = { name: string; path: string; sha: string; type: 'file' | 'dir' };
+
+/** List a directory's contents on a branch. Returns `null` on 404 — for a
+ * directory listing, 404 means "no such directory", which for git means
+ * ZERO entries (git cannot represent an empty directory), NOT an error and
+ * NOT license to fall back to another branch (tech-lead-20260717T090321
+ * Decision 2d). Callers that treat a 404 here as an error resurrect content
+ * a branch deliberately has none of. */
+export async function listDirectoryOnBranch(
+  token: string,
+  ref: RepoRef,
+  dirPath: string,
+  branch: string
+): Promise<DirectoryEntry[] | null> {
+  const cleanPath = dirPath.endsWith('/') ? dirPath.slice(0, -1) : dirPath;
+  const res = await githubFetch(
+    token,
+    `/repos/${ref.owner}/${ref.repo}/contents/${cleanPath}?ref=${encodeURIComponent(branch)}`
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubApiError(`Failed to list ${dirPath}@${branch}`, res.status);
+  const data = (await res.json()) as Array<{ name: string; path: string; sha: string; type: string }>;
+  return data.map((d) => ({
+    name: d.name,
+    path: d.path,
+    sha: d.sha,
+    type: d.type === 'dir' ? 'dir' : 'file',
+  }));
 }
 
 export type CommitAuthor = { name: string; email: string };
@@ -228,4 +295,21 @@ export async function mergeBranches(
   }
   const data = (await res.json()) as { sha: string };
   return { merged: true, sha: data.sha };
+}
+
+/** Delete a branch ref (tech-lead-20260717T090321 Decision 1d — recreate the
+ * draft clean from master after a successful publish). Safe ONLY because
+ * the caller must only invoke this after `mergeBranches` reports
+ * `merged: true`: every commit that was on the branch is by then reachable
+ * from the merge target, so nothing is discarded. 404 (already gone) is
+ * treated as success, not an error. */
+export async function deleteBranch(token: string, ref: RepoRef, branch: string): Promise<void> {
+  const res = await githubFetch(
+    token,
+    `/repos/${ref.owner}/${ref.repo}/git/refs/heads/${encodeURIComponent(branch)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok && res.status !== 404) {
+    throw new GitHubApiError(`Failed to delete branch ${branch}`, res.status);
+  }
 }

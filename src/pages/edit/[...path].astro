@@ -18,7 +18,7 @@
 //   /edit/blog/<slug>       -> edit an existing post
 export const prerender = false;
 
-import { getCollection, getEntry } from 'astro:content';
+import { loadSiteJson, loadCollectionJson, loadBlogList, loadBlogPost, type ContentSource } from '../../lib/draftContent';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import EditorHarness from '../../components/EditorHarness.astro';
 import EditHome from '../../components/edit/EditHome.astro';
@@ -49,65 +49,76 @@ let pageTitle = 'Edit';
 // the props of the editor component it's handed to below.
 let body: any = null;
 
+// The `source` of whichever loader served the current view — draft-then-
+// master-then-build (src/lib/draftContent.ts) — surfaced to the toolbar so
+// it can render a sync-state affordance (senior-frontend-dev owns that UI;
+// this route only supplies the value it already has at render time).
+let contentSource: ContentSource;
+
 // Loaded once, shared by every view that surfaces the per-collection
 // editable empty-state field (product-owner-20260717T200000 Decision 3 /
 // tech-lead-20260717T044343 Decision D) — each editor patches only its own
-// key but must send the whole 4-key object on save.
-const emptyStatesEntry = await getEntry('site', 'emptyStates');
+// key but must send the whole 4-key object on save. Also serves the
+// home/about/contact views below since they all live in the same site.json.
+const siteJson = await loadSiteJson();
+const siteData = (siteJson.data ?? {}) as Record<string, any>;
+contentSource = siteJson.source;
 const emptyStates = {
-  projects: emptyStatesEntry?.data.projects ?? '',
-  experience: emptyStatesEntry?.data.experience ?? '',
-  blog: emptyStatesEntry?.data.blog ?? '',
-  contact: emptyStatesEntry?.data.contact ?? '',
+  projects: siteData.emptyStates?.projects ?? '',
+  experience: siteData.emptyStates?.experience ?? '',
+  blog: siteData.emptyStates?.blog ?? '',
+  contact: siteData.emptyStates?.contact ?? '',
 };
 
 if (segments.length === 0) {
-  const homeEntry = await getEntry('site', 'home');
-  const hero = homeEntry?.data.hero;
+  const hero = siteData.home?.hero;
   if (!hero) return notFound();
   pageTitle = 'Edit — Home';
   body = { view: 'home', hero };
 } else if (area === 'about' && !sub) {
-  const aboutEntry = await getEntry('site', 'about');
-  if (!aboutEntry) return notFound();
+  const about = siteData.about;
+  if (!about) return notFound();
   pageTitle = 'Edit — About';
   body = {
     view: 'about',
-    about: { body: aboutEntry.data.body ?? '', image: aboutEntry.data.image ?? null },
+    about: { body: about.body ?? '', image: about.image ?? null },
   };
 } else if (area === 'contact' && !sub) {
-  const contactEntry = await getEntry('site', 'contact');
-  if (!contactEntry) return notFound();
+  const contact = siteData.contact;
+  if (!contact) return notFound();
   pageTitle = 'Edit — Contact';
   body = {
     view: 'contact',
     contact: {
-      lede: contactEntry.data.lede ?? '',
-      links: contactEntry.data.links ?? [],
+      lede: contact.lede ?? '',
+      links: contact.links ?? [],
     },
     emptyStates,
   };
 } else if (area === 'projects' && !sub) {
-  const entries = await getCollection('projects');
+  const result = await loadCollectionJson('projects');
+  contentSource = result.source;
   pageTitle = 'Edit — Projects';
-  body = { view: 'projects', entries: entries.map((e) => e.data), emptyStates };
+  body = { view: 'projects', entries: result.data, emptyStates };
 } else if (area === 'experience' && !sub) {
-  const entries = await getCollection('experience');
+  const result = await loadCollectionJson('experience');
+  contentSource = result.source;
   pageTitle = 'Edit — Experience';
-  body = { view: 'experience', entries: entries.map((e) => e.data), emptyStates };
+  body = { view: 'experience', entries: result.data, emptyStates };
 } else if (area === 'blog' && !sub) {
-  const posts = await getCollection('blog');
-  const sorted = posts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+  const result = await loadBlogList();
+  contentSource = result.source;
+  const sorted = [...result.data].sort((a, b) => b.date.localeCompare(a.date));
   pageTitle = 'Edit — Blog';
   body = {
     view: 'blog-list',
     posts: sorted.map((p) => ({
-      id: p.id,
-      title: p.data.title,
-      description: p.data.description,
-      date: p.data.date,
-      tags: p.data.tags,
-      draft: p.data.draft,
+      id: p.slug,
+      title: p.title,
+      description: p.description,
+      date: new Date(p.date),
+      tags: p.tags,
+      draft: p.draft,
     })),
     emptyStates,
   };
@@ -127,20 +138,22 @@ if (segments.length === 0) {
     },
   };
 } else if (area === 'blog' && sub) {
-  const postEntry = await getEntry('blog', sub);
-  if (!postEntry) return notFound();
-  pageTitle = `Edit — ${postEntry.data.title}`;
+  const result = await loadBlogPost(sub);
+  contentSource = result.source;
+  if (!result.data) return notFound();
+  const post = result.data;
+  pageTitle = `Edit — ${post.title}`;
   body = {
     view: 'blog-post',
     isNew: false,
     post: {
-      slug: postEntry.id,
-      title: postEntry.data.title,
-      description: postEntry.data.description,
-      date: postEntry.data.date.toISOString().slice(0, 10),
-      draft: postEntry.data.draft,
-      tags: postEntry.data.tags,
-      body: postEntry.body ?? '',
+      slug: post.slug,
+      title: post.title,
+      description: post.description,
+      date: post.date,
+      draft: post.draft,
+      tags: post.tags,
+      body: post.body ?? '',
     },
   };
 } else {
@@ -161,5 +174,5 @@ if (segments.length === 0) {
   {body?.view === 'blog-list' && <EditBlogList posts={body.posts} emptyStates={body.emptyStates} />}
   {body?.view === 'blog-post' && <EditBlogPost post={body.post} isNew={body.isNew} />}
 
-  <EditorHarness slot="editor-toolbar" />
+  <EditorHarness slot="editor-toolbar" contentSource={contentSource} />
 </BaseLayout>
