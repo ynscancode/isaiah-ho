@@ -184,6 +184,25 @@ export async function getFileOnBranch(
   return { sha: data.sha, contentBase64: data.content };
 }
 
+/** Fallback for blobs the Contents API can't inline (>1MB, `content:""`
+ * `encoding:"none"`). The Git Blobs API inlines base64 for blobs up to
+ * 100MB, so this covers the full upload range. `sha` MUST be server-derived
+ * (from a prior `getFileOnBranch` result) — callers must never pass a
+ * caller-supplied sha; this function itself does no path validation, so the
+ * caller's path-regex gate is what makes the sha trustworthy. Read-only, no
+ * write/merge/force. Returns null on 404/non-OK/absent content, matching the
+ * existing null-on-absence convention in this file. */
+export async function getBlobBase64BySha(
+  token: string,
+  ref: RepoRef,
+  sha: string
+): Promise<string | null> {
+  const res = await githubFetch(token, `/repos/${ref.owner}/${ref.repo}/git/blobs/${sha}`);
+  if (!res.ok) return null;
+  const data = (await res.json().catch(() => null)) as { content?: string } | null;
+  return data?.content ?? null;
+}
+
 export type DirectoryEntry = { name: string; path: string; sha: string; type: 'file' | 'dir' };
 
 /** List a directory's contents on a branch. Returns `null` on 404 — for a

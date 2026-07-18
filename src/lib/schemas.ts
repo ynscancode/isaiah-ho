@@ -1,4 +1,5 @@
 import { z } from 'astro:content';
+import { ABOUT_IMAGE_PUBLIC_PATH_RE } from './contentPaths';
 
 // Server-side validation for every git-write body (validate at the boundary —
 // this IS the boundary: an authenticated-but-still-untrusted-payload write).
@@ -48,7 +49,7 @@ export const aboutBodySchema = z.object({
   body: z.string().max(20_000),
   image: z
     .string()
-    .regex(/^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/)
+    .regex(ABOUT_IMAGE_PUBLIC_PATH_RE)
     .nullable(),
   // The image path the client's form was loaded with (RC3 3b, tech-lead-
   // 20260717T090321). Compared server-side against the freshly-read draft
@@ -57,7 +58,7 @@ export const aboutBodySchema = z.object({
   // since the form was loaded. Stripped before persisting to site.json.
   baseImage: z
     .string()
-    .regex(/^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/)
+    .regex(ABOUT_IMAGE_PUBLIC_PATH_RE)
     .nullable(),
 });
 

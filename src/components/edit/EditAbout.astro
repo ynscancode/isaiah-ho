@@ -15,7 +15,7 @@ const { about } = Astro.props;
   <div class="about-image-field">
     <div class="about-image-preview" id="about-image-preview">
       {about.image ? (
-        <img src={about.image} alt="Current profile photo" />
+        <img src={`/api/draft/asset?path=${encodeURIComponent(about.image)}`} alt="Current profile photo" />
       ) : (
         <div class="about-image-empty" aria-hidden="true"><span class="mono">No photo</span></div>
       )}
@@ -144,7 +144,7 @@ const { about } = Astro.props;
       preview.innerHTML = '';
       if (imagePath) {
         const img = document.createElement('img');
-        img.src = imagePath;
+        img.src = '/api/draft/asset?path=' + encodeURIComponent(imagePath);
         img.alt = 'Current profile photo';
         preview.appendChild(img);
         removeBtn?.removeAttribute('hidden');
