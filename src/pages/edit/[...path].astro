@@ -27,6 +27,7 @@ import EditContact from '../../components/edit/EditContact.astro';
 import EditCollection from '../../components/edit/EditCollection.astro';
 import EditBlogList from '../../components/edit/EditBlogList.astro';
 import EditBlogPost from '../../components/edit/EditBlogPost.astro';
+import EditHistory from '../../components/edit/EditHistory.astro';
 
 function notFound(): Response {
   return new Response('Not found', {
@@ -132,6 +133,14 @@ if (segments.length === 0) {
     })),
     emptyStates: emptyStatesFrom(siteData),
   };
+} else if (area === 'history' && !sub) {
+  // Version history is fetched client-side from /api/draft/history (see
+  // EditHistory.astro) — no server-side draft read needed here, so this
+  // route doesn't hit loadSiteJson/loadCollectionJson at all (tech-lead
+  // D2: only load what a view actually needs).
+  contentSource = 'draft';
+  pageTitle = 'Edit — History';
+  body = { view: 'history' };
 } else if (area === 'blog' && sub === 'new') {
   contentSource = 'draft';
   pageTitle = 'Edit — New blog post';
@@ -184,6 +193,7 @@ if (segments.length === 0) {
   )}
   {body?.view === 'blog-list' && <EditBlogList posts={body.posts} emptyStates={body.emptyStates} />}
   {body?.view === 'blog-post' && <EditBlogPost post={body.post} isNew={body.isNew} />}
+  {body?.view === 'history' && <EditHistory />}
 
   <EditorHarness slot="editor-toolbar" contentSource={contentSource} />
 </BaseLayout>

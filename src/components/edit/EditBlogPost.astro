@@ -73,6 +73,7 @@ const { post, isNew } = Astro.props;
   import { makeAutosaver, saveArea, slugify } from '../../lib/editor/client';
   import type { SaveResult } from '../../lib/editor/client';
   import type { BlogPostData } from './EditBlogPost.astro';
+  import { wireField } from '../../lib/editor/history';
 
   const container = document.querySelector<HTMLElement>('[data-editable-area="blog"]');
   if (container) {
@@ -152,6 +153,47 @@ const { post, isNew } = Astro.props;
     bodyEl.addEventListener('input', () => {
       working.body = bodyEl.value;
       autosaver.schedule();
+    });
+
+    // Item 5: per-field undo/redo, committed at each field's own blur
+    // boundary (matches PO's field-commit-boundary granularity).
+    wireField({
+      id: 'blog:title',
+      el: titleEl,
+      getValue: () => titleEl.value,
+      setValue: (v) => { titleEl.value = v; },
+      onApply: (v) => { working.title = v; autosaver.schedule(); },
+    });
+    wireField({
+      id: 'blog:description',
+      el: descEl,
+      getValue: () => descEl.value,
+      setValue: (v) => { descEl.value = v; },
+      onApply: (v) => { working.description = v; autosaver.schedule(); },
+    });
+    wireField({
+      id: 'blog:date',
+      el: dateEl,
+      getValue: () => dateEl.value,
+      setValue: (v) => { dateEl.value = v; },
+      onApply: (v) => { working.date = v; autosaver.schedule(); },
+    });
+    wireField({
+      id: 'blog:tags',
+      el: tagsEl,
+      getValue: () => tagsEl.value,
+      setValue: (v) => { tagsEl.value = v; },
+      onApply: (v) => {
+        working.tags = v.split(',').map((tag) => tag.trim()).filter((tag) => tag.length > 0);
+        autosaver.schedule();
+      },
+    });
+    wireField({
+      id: 'blog:body',
+      el: bodyEl,
+      getValue: () => bodyEl.value,
+      setValue: (v) => { bodyEl.value = v; },
+      onApply: (v) => { working.body = v; autosaver.schedule(); },
     });
 
     window.addEventListener('editor:save-all', () => {

@@ -1,0 +1,322 @@
+---
+import Band from '../Band.astro';
+---
+
+<Band variant="ink" eyebrow="06 — History" as="div">
+  <h1>Version history</h1>
+  <p id="history-status" role="status" aria-live="polite"></p>
+
+  <p class="editor-note" id="history-loading">Loading history…</p>
+  <p class="editor-note" id="history-empty" hidden>
+    No saved versions yet — history will appear here once you save a change.
+  </p>
+  <div id="history-error-banner" class="editor-toolbar-banner" role="alert" hidden>
+    Couldn't load version history. <a href="#" id="history-retry">Retry</a>
+  </div>
+
+  <ul class="history-list" id="history-list" aria-label="Version history" hidden></ul>
+</Band>
+
+<script>
+  import { fetchHistory, revertDraft } from '../../lib/editor/client';
+  import type { CommitSummary } from '../../lib/editor/client';
+
+  const SITE_JSON_AREAS = new Set(['home', 'about', 'contact', 'emptyStates']);
+
+  type ParsedCommit =
+    | { kind: 'update-site'; area: string }
+    | { kind: 'update-isolated'; area: 'projects' | 'experience' }
+    | { kind: 'update-blog'; slug: string }
+    | { kind: 'delete-blog'; slug: string }
+    | { kind: 'other' };
+
+  // Message prefixes actually emitted by the server (senior-backend-dev
+  // -20260718T082840 / src/pages/api/content/[area].ts + api/draft/revert.ts):
+  //   Normal saves: "Update <home|about|contact|emptyStates> content" (all
+  //     four bundled in site.json — any one of them touches the same file),
+  //     "Update <projects|experience> content", "Update blog post: <slug>",
+  //     "Delete blog post: <slug>".
+  //   Reverts: "Revert site content to <shortSha>" (site.json — always
+  //     labeled "site", not the originating area, since a revert restores
+  //     the whole bundled file), "Revert <projects|experience> content to
+  //     <shortSha>", "Revert blog post <slug> to <shortSha>".
+  function parseCommit(message: string): ParsedCommit {
+    let m = message.match(/^Update (home|about|contact|emptyStates) content$/);
+    if (m) return { kind: 'update-site', area: m[1] };
+    if (message.match(/^Revert site content to [0-9a-f]+$/)) return { kind: 'update-site', area: 'site' };
+    m = message.match(/^(?:Update|Revert) (projects|experience) content(?: to [0-9a-f]+)?$/);
+    if (m) return { kind: 'update-isolated', area: m[1] as 'projects' | 'experience' };
+    m = message.match(/^Update blog post: (.+)$/);
+    if (m) return { kind: 'update-blog', slug: m[1] };
+    m = message.match(/^Revert blog post (.+) to [0-9a-f]+$/);
+    if (m) return { kind: 'update-blog', slug: m[1] };
+    m = message.match(/^Delete blog post: (.+)$/);
+    if (m) return { kind: 'delete-blog', slug: m[1] };
+    return { kind: 'other' };
+  }
+
+  function areaBadge(parsed: ParsedCommit): string {
+    switch (parsed.kind) {
+      case 'update-site':
+        return parsed.area;
+      case 'update-isolated':
+        return parsed.area;
+      case 'update-blog':
+      case 'delete-blog':
+        return 'blog';
+      default:
+        return 'other';
+    }
+  }
+
+  function confirmCopy(parsed: ParsedCommit, timestamp: string): string {
+    switch (parsed.kind) {
+      case 'update-site':
+        return `Restore "${parsed.area}" to its state as of ${timestamp}? Because home, about, contact, and the empty-state messages are all saved together, this will roll ALL FOUR back to that same moment — not just ${parsed.area}. This creates a new save; it doesn't lose history and can be reverted again.`;
+      case 'update-isolated':
+        return `Restore "${parsed.area}" to its state as of ${timestamp}? This creates a new save; it doesn't lose history and can be reverted again.`;
+      case 'update-blog':
+        return `Restore "${parsed.slug}" to its state as of ${timestamp}? This creates a new save; it doesn't lose history and can be reverted again.`;
+      case 'delete-blog':
+        return `Un-delete "${parsed.slug}" and restore it to its state as of ${timestamp}? This creates a new save; it doesn't lose history and can be reverted again.`;
+      default:
+        return `Restore this version to its state as of ${timestamp}? This creates a new save; it doesn't lose history and can be reverted again.`;
+    }
+  }
+
+  function formatRelative(date: Date): string {
+    const diffMs = Date.now() - date.getTime();
+    const diffSec = Math.round(diffMs / 1000);
+    if (diffSec < 60) return 'Just now';
+    const diffMin = Math.round(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.round(diffHr / 24);
+    if (diffDay < 30) return `${diffDay}d ago`;
+    return date.toLocaleDateString();
+  }
+
+  const statusEl = document.getElementById('history-status');
+  const loadingEl = document.getElementById('history-loading');
+  const emptyEl = document.getElementById('history-empty');
+  const errorBanner = document.getElementById('history-error-banner');
+  const retryLink = document.getElementById('history-retry');
+  const listEl = document.getElementById('history-list') as HTMLUListElement | null;
+
+  function setStatus(text: string, tone?: 'error') {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    if (tone) statusEl.setAttribute('data-tone', tone);
+    else statusEl.removeAttribute('data-tone');
+  }
+
+  function focusStatus() {
+    if (!statusEl) return;
+    statusEl.setAttribute('tabindex', '-1');
+    statusEl.focus();
+  }
+
+  function setRestoreButtonsDisabled(disabled: boolean) {
+    listEl?.querySelectorAll<HTMLButtonElement>('[data-restore-sha]').forEach((btn) => {
+      btn.disabled = disabled;
+    });
+  }
+
+  function renderRow(commit: CommitSummary, isHead: boolean): HTMLLIElement {
+    const parsed = parseCommit(commit.message);
+    const date = new Date(commit.date);
+    const li = document.createElement('li');
+    li.className = isHead ? 'history-row history-row--current' : 'history-row';
+
+    const badge = document.createElement('span');
+    badge.className = 'history-area-badge';
+    badge.textContent = areaBadge(parsed);
+    li.appendChild(badge);
+
+    const msg = document.createElement('span');
+    msg.className = 'history-row-message';
+    msg.textContent = commit.message;
+    li.appendChild(msg);
+
+    const time = document.createElement('span');
+    time.className = 'history-row-time';
+    time.title = date.toLocaleString();
+    time.textContent = formatRelative(date);
+    li.appendChild(time);
+
+    if (isHead) {
+      const current = document.createElement('span');
+      current.className = 'history-row-current-label mono';
+      current.textContent = 'Current';
+      li.appendChild(current);
+    } else {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'editor-btn';
+      btn.textContent = 'Restore this version';
+      btn.setAttribute('data-restore-sha', commit.sha);
+      btn.setAttribute(
+        'aria-label',
+        `Restore version: ${commit.message}, ${formatRelative(date)}`
+      );
+      btn.addEventListener('click', () => {
+        void handleRestore(commit, parsed, date, btn);
+      });
+      li.appendChild(btn);
+    }
+
+    return li;
+  }
+
+  async function handleRestore(
+    commit: CommitSummary,
+    parsed: ParsedCommit,
+    date: Date,
+    btn: HTMLButtonElement
+  ) {
+    const confirmed = window.confirm(confirmCopy(parsed, date.toLocaleString()));
+    if (!confirmed) return;
+
+    setRestoreButtonsDisabled(true);
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Restoring…';
+    setStatus('Restoring…');
+
+    const result = await revertDraft(commit.sha);
+
+    if (result.ok) {
+      setStatus('Restored. Reload to see the update everywhere in the editor.');
+      focusStatus();
+      appendReloadControl();
+      await loadHistory();
+    } else {
+      setStatus(`Restore failed: ${result.error}. Try again.`, 'error');
+      focusStatus();
+      setRestoreButtonsDisabled(false);
+      btn.textContent = originalLabel;
+    }
+  }
+
+  function appendReloadControl() {
+    if (!statusEl || document.getElementById('history-reload-btn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'history-reload-btn';
+    btn.className = 'editor-btn';
+    btn.textContent = 'Reload';
+    btn.addEventListener('click', () => location.reload());
+    statusEl.appendChild(document.createTextNode(' '));
+    statusEl.appendChild(btn);
+  }
+
+  async function loadHistory() {
+    loadingEl?.removeAttribute('hidden');
+    emptyEl?.setAttribute('hidden', '');
+    errorBanner?.setAttribute('hidden', '');
+    listEl?.setAttribute('hidden', '');
+
+    const result = await fetchHistory();
+
+    loadingEl?.setAttribute('hidden', '');
+
+    if (!result) {
+      errorBanner?.removeAttribute('hidden');
+      return;
+    }
+
+    const commits = result.commits ?? [];
+    if (commits.length === 0) {
+      emptyEl?.removeAttribute('hidden');
+      return;
+    }
+
+    if (listEl) {
+      listEl.innerHTML = '';
+      commits.forEach((commit, index) => {
+        listEl.appendChild(renderRow(commit, index === 0));
+      });
+      listEl.removeAttribute('hidden');
+    }
+  }
+
+  retryLink?.addEventListener('click', (event) => {
+    event.preventDefault();
+    void loadHistory();
+  });
+
+  void loadHistory();
+</script>
+
+<style>
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 2rem;
+  }
+
+  #history-status {
+    min-height: 1.2rem;
+    font-size: 0.85rem;
+    margin: 0 0 1rem;
+  }
+  #history-status[data-tone="error"] {
+    color: #ff9c9c;
+  }
+
+  .editor-note {
+    max-width: 65ch;
+    font-size: 0.85rem;
+    color: #8891ab;
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    list-style: none;
+    padding: 0;
+  }
+  .history-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.85rem 1rem;
+    border: 1px solid #3a4468;
+    border-radius: 4px;
+    background: rgba(245, 243, 238, 0.04);
+  }
+  .history-row--current {
+    border-color: var(--signal, #c87f0a);
+  }
+  .history-row-message {
+    flex: 1 1 auto;
+    min-width: 180px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+  }
+  .history-row-time {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+  .history-area-badge {
+    flex: 0 0 auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    opacity: 0.85;
+  }
+  .history-row-current-label {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    color: var(--signal, #c87f0a);
+    opacity: 0.9;
+  }
+</style>

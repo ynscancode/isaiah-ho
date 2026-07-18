@@ -46,6 +46,7 @@ const { about } = Astro.props;
 <script>
   import { getCsrfToken, makeAutosaver, saveArea } from '../../lib/editor/client';
   import type { SaveResult } from '../../lib/editor/client';
+  import { wireField } from '../../lib/editor/history';
 
   const AREA = 'about';
   const container = document.querySelector<HTMLElement>('[data-editable-area="about"]');
@@ -94,6 +95,19 @@ const { about } = Astro.props;
     bodyEl.addEventListener('input', () => {
       working.body = bodyEl.value;
       autosaver.schedule();
+    });
+
+    wireField({
+      id: 'about:body',
+      el: bodyEl,
+      getValue: () => bodyEl.value,
+      setValue: (value) => {
+        bodyEl.value = value;
+      },
+      onApply: (value) => {
+        working.body = value;
+        autosaver.schedule();
+      },
     });
 
     window.addEventListener('editor:save-all', () => {
@@ -258,18 +272,23 @@ const { about } = Astro.props;
   }
   .about-image-preview {
     width: 160px;
-    aspect-ratio: 4 / 5;
+    max-height: 200px;
     flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
   }
   .about-image-preview img {
-    width: 100%; height: 100%;
-    object-fit: cover;
+    width: auto;
+    height: auto;
+    max-width: 160px;
+    max-height: 200px;
+    object-fit: contain;
     border-radius: 4px;
     border: 1px solid var(--line, #d8d3c7);
     display: block;
   }
   .about-image-empty {
-    width: 100%; height: 100%;
+    width: 160px; height: 200px;
     border: 1px dashed var(--slate, #5b6472);
     border-radius: 4px;
     display: flex; align-items: center; justify-content: center;

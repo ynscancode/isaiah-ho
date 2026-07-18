@@ -116,6 +116,43 @@ export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSh
   return res.json();
 }
 
+// --- Item 4: version history / revert (tech-lead-20260718T082028 §E) ---
+
+export type CommitSummary = { sha: string; message: string; date: string };
+
+/** GET /api/draft/history — session-gated, no CSRF (read-only). Returns the
+ * last 30 commits on editor-draft, newest first, or null on failure (the
+ * caller renders the error state, never a false-empty list). */
+export async function fetchHistory(): Promise<{ commits: CommitSummary[] } | null> {
+  const res = await fetch('/api/draft/history');
+  if (!res.ok) return null;
+  return parseJsonSafe<{ commits: CommitSummary[] }>(res);
+}
+
+export type RevertResult =
+  | { ok: true; headSha?: string; revertedPaths?: string[] }
+  | { ok: false; error: string };
+
+/** POST /api/draft/revert — session+CSRF gated, body { targetSha } ONLY
+ * (KB-0017 — client never sends paths/git-ops, the server re-derives which
+ * whitelisted files the commit touched). Error contract: invalid_target
+ * (400), unreachable_sha (409), no_content_paths (422), revert_conflict
+ * (409), write_failed (502), csrf_invalid (403, handled generically below
+ * via the reauth event same as every other mutating call). */
+export async function revertDraft(targetSha: string): Promise<RevertResult> {
+  const res = await fetch('/api/draft/revert', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+    body: JSON.stringify({ targetSha }),
+  });
+  const data = await parseJsonSafe<{ headSha?: string; revertedPaths?: string[]; error?: string; action?: string }>(res);
+  if (!res.ok) {
+    checkReauthNeeded(res.status, data);
+    return { ok: false, error: data?.error ?? `http_${res.status}` };
+  }
+  return { ok: true, headSha: data?.headSha, revertedPaths: data?.revertedPaths };
+}
+
 export async function publishDraft(): Promise<{ ok: boolean; conflict?: boolean; commitSha?: string }> {
   const res = await fetch('/api/publish', {
     method: 'POST',

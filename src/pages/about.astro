@@ -15,17 +15,13 @@ const bodyHtml = bodyToHtml(about.body ?? '');
 >
   <Band variant="ink" eyebrow="01 — About">
     <h1>About</h1>
-    <div class="about-layout">
+    <div class:list={["about-layout", { "about-layout--text-only": !about.image }]}>
       <div class="prose" set:html={bodyHtml} />
-      <div class="about-portrait">
-        {about.image ? (
-          <img src={about.image} alt="Isaiah Ho" width="600" height="750" />
-        ) : (
-          <div class="about-portrait-placeholder" aria-hidden="true">
-            <span class="mono">IH</span>
-          </div>
-        )}
-      </div>
+      {about.image && (
+        <div class="about-portrait">
+          <img src={about.image} alt="Isaiah Ho" />
+        </div>
+      )}
     </div>
   </Band>
 </BaseLayout>
@@ -42,30 +38,21 @@ const bodyHtml = bodyToHtml(about.body ?? '');
     gap: 3rem;
     align-items: start;
   }
+  .about-layout--text-only {
+    grid-template-columns: 1fr;
+  }
   .prose { order: 1; max-width: 65ch; }
   .about-portrait { order: 2; }
 
-  .about-portrait img,
-  .about-portrait-placeholder {
-    width: 100%;
-    aspect-ratio: 4 / 5;
-    object-fit: cover;
+  .about-portrait img {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 32rem;
     border-radius: 4px;
     border: 1px solid var(--line);
     display: block;
-  }
-  .about-portrait-placeholder {
-    background: rgba(245, 243, 238, 0.04); /* faint paper tint on the ink band */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .about-portrait-placeholder span {
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 2rem;
-    letter-spacing: 0.05em;
-    color: var(--signal);
-    opacity: 0.6;
+    margin: 0 auto;
   }
 
   /* First paragraph keeps the existing "lede" treatment (larger, muted) purely
@@ -85,9 +72,9 @@ const bodyHtml = bodyToHtml(about.body ?? '');
       gap: 2rem;
     }
     .about-portrait { order: -1; } /* portrait visually leads on mobile, DOM stays text-first */
-    .about-portrait img,
-    .about-portrait-placeholder {
+    .about-portrait img {
       max-width: 320px;
+      max-height: 20rem;
       margin: 0 auto;
     }
   }

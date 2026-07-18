@@ -45,6 +45,7 @@ const { hero } = Astro.props;
 
 <script>
   import { getPath, makeAutosaver, saveArea, sanitizeHeadlineHtml, setPath } from '../../lib/editor/client';
+  import { commit, commitAtomic, register } from '../../lib/editor/history';
 
   const AREA = 'home';
   const container = document.querySelector<HTMLElement>('[data-editable-area="home"]');
@@ -69,19 +70,42 @@ const { hero } = Astro.props;
       save: () => saveArea(AREA, working),
     });
 
+    function readEl(el: HTMLElement): string {
+      return el.tagName === 'H1' ? sanitizeHeadlineHtml(el.innerHTML) : el.textContent ?? '';
+    }
+
+    function applyEl(el: HTMLElement, path: string, value: string) {
+      if (el.tagName === 'H1') {
+        el.innerHTML = value;
+      } else {
+        el.textContent = value;
+      }
+      setPath(working as unknown as Record<string, unknown>, path, value);
+      autosaver.schedule();
+    }
+
     container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
       // The CTA labels are real <a href> elements made contenteditable —
       // prevent a click from navigating away mid-edit.
       if (el.tagName === 'A') {
         el.addEventListener('click', (event) => event.preventDefault());
       }
+      const path = el.getAttribute('data-editable');
+      if (!path) return;
+      const historyId = `home:${path}`;
+
+      register({
+        id: historyId,
+        read: () => readEl(el),
+        apply: (value) => applyEl(el, path, value),
+      });
+
       el.addEventListener('input', () => {
-        const path = el.getAttribute('data-editable');
-        if (!path) return;
-        const value = el.tagName === 'H1' ? sanitizeHeadlineHtml(el.innerHTML) : el.textContent ?? '';
+        const value = readEl(el);
         setPath(working as unknown as Record<string, unknown>, path, value);
         autosaver.schedule();
       });
+      el.addEventListener('blur', () => commit(historyId));
     });
 
     container.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
@@ -96,6 +120,19 @@ const { hero } = Astro.props;
         const anchor = btn.previousElementSibling as HTMLAnchorElement | null;
         if (anchor) anchor.setAttribute('href', value);
         autosaver.schedule();
+
+        const historyId = `home:${path}`;
+        register({
+          id: historyId,
+          read: () => String(getPath(working, path) ?? ''),
+          apply: (v) => {
+            setPath(working as unknown as Record<string, unknown>, path, v);
+            const a = btn.previousElementSibling as HTMLAnchorElement | null;
+            if (a) a.setAttribute('href', v);
+            autosaver.schedule();
+          },
+        });
+        commitAtomic(historyId, current, value);
       });
     });
 
