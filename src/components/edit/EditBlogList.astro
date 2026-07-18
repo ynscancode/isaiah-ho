@@ -44,8 +44,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
 </script>
 
 <script>
-  import { deleteBlogPost, debounce, saveArea, statusLabel } from '../../lib/editor/client';
-  import type { SaveStatus } from '../../lib/editor/client';
+  import { deleteBlogPost, makeAutosaver, saveArea } from '../../lib/editor/client';
 
   document.querySelectorAll<HTMLButtonElement>('[data-remove-post]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -73,30 +72,17 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     ).__editorSeed.emptyStates;
     const workingEmptyStates = { ...seedEmptyStates };
 
-    let esStatus: SaveStatus = 'idle';
-    function reportEsStatus(next: SaveStatus) {
-      esStatus = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status: esStatus, label: statusLabel(esStatus) } })
-      );
-    }
-
-    async function saveEmptyStates() {
-      reportEsStatus('saving');
-      const result = await saveArea('emptyStates', workingEmptyStates);
-      reportEsStatus(result.ok ? 'saved' : 'error');
-    }
-
-    const scheduleEsSave = debounce(saveEmptyStates, 1500);
+    const emptyStatesAutosaver = makeAutosaver({
+      save: () => saveArea('emptyStates', workingEmptyStates),
+    });
 
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.blog = emptyStateEl.value;
-      reportEsStatus('dirty');
-      scheduleEsSave();
+      emptyStatesAutosaver.schedule();
     });
 
     window.addEventListener('editor:save-all', () => {
-      void saveEmptyStates();
+      void emptyStatesAutosaver.flush();
     });
   }
 </script>

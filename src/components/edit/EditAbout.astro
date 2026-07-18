@@ -44,8 +44,8 @@ const { about } = Astro.props;
 </script>
 
 <script>
-  import { debounce, getCsrfToken, saveArea, statusLabel } from '../../lib/editor/client';
-  import type { SaveStatus } from '../../lib/editor/client';
+  import { getCsrfToken, makeAutosaver, saveArea } from '../../lib/editor/client';
+  import type { SaveResult } from '../../lib/editor/client';
 
   const AREA = 'about';
   const container = document.querySelector<HTMLElement>('[data-editable-area="about"]');
@@ -61,7 +61,7 @@ const { about } = Astro.props;
     };
 
     // Optimistic-concurrency base value — the image the form was rendered
-    // from. Advanced ONLY after a confirmed successful save (see doSave()),
+    // from. Advanced ONLY after a confirmed successful save (see saveAbout()),
     // never in the upload/remove handlers directly. This is the RC3 guard
     // (tech-lead-20260717T090321 / senior-backend-dev-20260717T180600): the
     // server compares this against the current draft value and 409s with
@@ -70,41 +70,34 @@ const { about } = Astro.props;
     // session working while a truly stale page stays blocked until reload.
     let baseImage: string | null = seedImage ?? null;
 
-    let status: SaveStatus = 'idle';
-    function reportStatus(next: SaveStatus) {
-      status = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
-      );
-    }
-
-    async function doSave() {
-      reportStatus('saving');
+    // save() is called by the shared autosaver — it must always send
+    // `{...working, baseImage}` and advance `baseImage` only on a
+    // confirmed `result.ok`, exactly as before (RC3 guard, preserved).
+    async function saveAbout(): Promise<SaveResult> {
       const result = await saveArea(AREA, { ...working, baseImage });
       if (result.ok) {
         baseImage = working.image;
-        reportStatus('saved');
-        return;
       }
-      if (result.error === 'stale_form') {
-        setImageStatus('This page is out of date — reload to see your current draft.', 'error');
-        reportStatus('error');
-        showReloadControl();
-        return;
-      }
-      reportStatus('error');
+      return result;
     }
 
-    const scheduleSave = debounce(doSave, 1500);
+    const autosaver = makeAutosaver({ save: saveAbout });
+
+    // The stale_form 409 reload affordance now flows through the shared
+    // editor:stale-form event (dispatched by the autosaver on that error)
+    // instead of being handled inline in saveAbout().
+    window.addEventListener('editor:stale-form', () => {
+      setImageStatus('This page is out of date — reload to see your current draft.', 'error');
+      showReloadControl();
+    });
 
     bodyEl.addEventListener('input', () => {
       working.body = bodyEl.value;
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
 
     window.addEventListener('editor:save-all', () => {
-      void doSave();
+      void autosaver.flush();
     });
 
     // --- Profile image upload widget ---
@@ -222,8 +215,7 @@ const { about } = Astro.props;
           working.image = data.path;
           renderPreview(data.path);
           setImageStatus('Uploaded', 'ok');
-          reportStatus('dirty');
-          await doSave();
+          await autosaver.flush();
         } catch {
           setImageStatus('Upload failed. Try again.', 'error');
         } finally {
@@ -236,8 +228,7 @@ const { about } = Astro.props;
       working.image = null;
       renderPreview(null);
       setImageStatus('');
-      reportStatus('dirty');
-      void doSave();
+      void autosaver.flush();
     });
   }
 </script>

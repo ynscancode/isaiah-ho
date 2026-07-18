@@ -44,8 +44,7 @@ const { hero } = Astro.props;
 </div>
 
 <script>
-  import { debounce, getPath, saveArea, sanitizeHeadlineHtml, setPath, statusLabel } from '../../lib/editor/client';
-  import type { SaveStatus } from '../../lib/editor/client';
+  import { getPath, makeAutosaver, saveArea, sanitizeHeadlineHtml, setPath } from '../../lib/editor/client';
 
   const AREA = 'home';
   const container = document.querySelector<HTMLElement>('[data-editable-area="home"]');
@@ -65,22 +64,10 @@ const { hero } = Astro.props;
     };
 
     const working: typeof seed = JSON.parse(JSON.stringify(seed));
-    let status: SaveStatus = 'idle';
 
-    function reportStatus(next: SaveStatus) {
-      status = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
-      );
-    }
-
-    async function doSave() {
-      reportStatus('saving');
-      const result = await saveArea(AREA, working);
-      reportStatus(result.ok ? 'saved' : 'error');
-    }
-
-    const scheduleSave = debounce(doSave, 1500);
+    const autosaver = makeAutosaver({
+      save: () => saveArea(AREA, working),
+    });
 
     container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
       // The CTA labels are real <a href> elements made contenteditable —
@@ -93,8 +80,7 @@ const { hero } = Astro.props;
         if (!path) return;
         const value = el.tagName === 'H1' ? sanitizeHeadlineHtml(el.innerHTML) : el.textContent ?? '';
         setPath(working as unknown as Record<string, unknown>, path, value);
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
     });
 
@@ -109,13 +95,12 @@ const { hero } = Astro.props;
         setPath(working as unknown as Record<string, unknown>, path, value);
         const anchor = btn.previousElementSibling as HTMLAnchorElement | null;
         if (anchor) anchor.setAttribute('href', value);
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
     });
 
     window.addEventListener('editor:save-all', () => {
-      void doSave();
+      void autosaver.flush();
     });
   }
 </script>

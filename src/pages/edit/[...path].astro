@@ -55,27 +55,31 @@ let body: any = null;
 // this route only supplies the value it already has at render time).
 let contentSource: ContentSource;
 
-// Loaded once, shared by every view that surfaces the per-collection
-// editable empty-state field (product-owner-20260717T200000 Decision 3 /
-// tech-lead-20260717T044343 Decision D) — each editor patches only its own
-// key but must send the whole 4-key object on save. Also serves the
-// home/about/contact views below since they all live in the same site.json.
-const siteJson = await loadSiteJson();
-const siteData = (siteJson.data ?? {}) as Record<string, any>;
-contentSource = siteJson.source;
-const emptyStates = {
-  projects: siteData.emptyStates?.projects ?? '',
-  experience: siteData.emptyStates?.experience ?? '',
-  blog: siteData.emptyStates?.blog ?? '',
-  contact: siteData.emptyStates?.contact ?? '',
-};
+// tech-lead-20260718T041814 D2: each view loads only the GitHub reads it
+// actually needs, concurrently where more than one is needed. Do NOT
+// reintroduce an unconditional top-level loadSiteJson() — that was the
+// waste (e.g. blog-post views never use siteData/emptyStates).
+function emptyStatesFrom(siteData: Record<string, any>) {
+  return {
+    projects: siteData.emptyStates?.projects ?? '',
+    experience: siteData.emptyStates?.experience ?? '',
+    blog: siteData.emptyStates?.blog ?? '',
+    contact: siteData.emptyStates?.contact ?? '',
+  };
+}
 
 if (segments.length === 0) {
+  const siteJson = await loadSiteJson();
+  contentSource = siteJson.source;
+  const siteData = (siteJson.data ?? {}) as Record<string, any>;
   const hero = siteData.home?.hero;
   if (!hero) return notFound();
   pageTitle = 'Edit — Home';
   body = { view: 'home', hero };
 } else if (area === 'about' && !sub) {
+  const siteJson = await loadSiteJson();
+  contentSource = siteJson.source;
+  const siteData = (siteJson.data ?? {}) as Record<string, any>;
   const about = siteData.about;
   if (!about) return notFound();
   pageTitle = 'Edit — About';
@@ -84,6 +88,9 @@ if (segments.length === 0) {
     about: { body: about.body ?? '', image: about.image ?? null },
   };
 } else if (area === 'contact' && !sub) {
+  const siteJson = await loadSiteJson();
+  contentSource = siteJson.source;
+  const siteData = (siteJson.data ?? {}) as Record<string, any>;
   const contact = siteData.contact;
   if (!contact) return notFound();
   pageTitle = 'Edit — Contact';
@@ -93,20 +100,23 @@ if (segments.length === 0) {
       lede: contact.lede ?? '',
       links: contact.links ?? [],
     },
-    emptyStates,
+    emptyStates: emptyStatesFrom(siteData),
   };
 } else if (area === 'projects' && !sub) {
-  const result = await loadCollectionJson('projects');
+  const [siteJson, result] = await Promise.all([loadSiteJson(), loadCollectionJson('projects')]);
+  const siteData = (siteJson.data ?? {}) as Record<string, any>;
   contentSource = result.source;
   pageTitle = 'Edit — Projects';
-  body = { view: 'projects', entries: result.data, emptyStates };
+  body = { view: 'projects', entries: result.data, emptyStates: emptyStatesFrom(siteData) };
 } else if (area === 'experience' && !sub) {
-  const result = await loadCollectionJson('experience');
+  const [siteJson, result] = await Promise.all([loadSiteJson(), loadCollectionJson('experience')]);
+  const siteData = (siteJson.data ?? {}) as Record<string, any>;
   contentSource = result.source;
   pageTitle = 'Edit — Experience';
-  body = { view: 'experience', entries: result.data, emptyStates };
+  body = { view: 'experience', entries: result.data, emptyStates: emptyStatesFrom(siteData) };
 } else if (area === 'blog' && !sub) {
-  const result = await loadBlogList();
+  const [siteJson, result] = await Promise.all([loadSiteJson(), loadBlogList()]);
+  const siteData = (siteJson.data ?? {}) as Record<string, any>;
   contentSource = result.source;
   const sorted = [...result.data].sort((a, b) => b.date.localeCompare(a.date));
   pageTitle = 'Edit — Blog';
@@ -120,9 +130,10 @@ if (segments.length === 0) {
       tags: p.tags,
       draft: p.draft,
     })),
-    emptyStates,
+    emptyStates: emptyStatesFrom(siteData),
   };
 } else if (area === 'blog' && sub === 'new') {
+  contentSource = 'draft';
   pageTitle = 'Edit — New blog post';
   body = {
     view: 'blog-post',

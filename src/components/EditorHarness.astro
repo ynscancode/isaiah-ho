@@ -416,4 +416,30 @@ const { contentSource } = Astro.props;
       message.appendChild(link);
     }
   });
+
+  // Fired by makeAutosaver() (src/lib/editor/client.ts) whenever a save gets
+  // back the server's stale_form contract (409 — RC3 baseImage guard, see
+  // senior-backend-dev-20260717T180600 / tech-lead-20260718T041814 D3): the
+  // page's view of the draft is out of date and a background save was
+  // rejected rather than risking clobbering a newer draft. NEVER auto-reload
+  // here — that would silently drop whatever the user has typed since; the
+  // user has to click through, same as the reauth affordance above.
+  window.addEventListener('editor:stale-form', () => {
+    if (statusText) {
+      statusText.textContent = 'Save failed';
+      statusText.dataset.status = 'error';
+    }
+    if (message) {
+      message.textContent = '';
+      message.append('Content changed on the server — reload to continue. ');
+      const link = document.createElement('a');
+      link.href = '#';
+      link.textContent = 'Reload';
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        location.reload();
+      });
+      message.appendChild(link);
+    }
+  });
 </script>

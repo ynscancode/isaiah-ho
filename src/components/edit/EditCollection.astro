@@ -76,8 +76,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
 </script>
 
 <script>
-  import { debounce, saveArea, slugify, statusLabel, uniqueId } from '../../lib/editor/client';
-  import type { SaveStatus } from '../../lib/editor/client';
+  import { makeAutosaver, saveArea, slugify, uniqueId } from '../../lib/editor/client';
 
   type Entry = {
     id: string;
@@ -95,27 +94,14 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
   const area = areaAttr === 'projects' || areaAttr === 'experience' ? areaAttr : null;
   if (list && area) {
     // Re-bind to a narrowed const: TS doesn't retain the `area !== null`
-    // narrowing for a variable captured by the nested doSave() closure below.
+    // narrowing for a variable captured by the nested save() closure below.
     const areaName: 'projects' | 'experience' = area;
     const seed = ((window as unknown as { __editorSeed: Record<string, Entry[]> }).__editorSeed?.[areaName] ?? []) as Entry[];
     const working = new Map<string, Entry>(seed.map((entry) => [entry.id, { ...entry }]));
 
-    let status: SaveStatus = 'idle';
-    function reportStatus(next: SaveStatus) {
-      status = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
-      );
-    }
-
-    async function doSave() {
-      reportStatus('saving');
-      const payload = Array.from(working.values());
-      const result = await saveArea(areaName, payload);
-      reportStatus(result.ok ? 'saved' : 'error');
-    }
-
-    const scheduleSave = debounce(doSave, 1500);
+    const autosaver = makeAutosaver({
+      save: () => saveArea(areaName, Array.from(working.values())),
+    });
 
     function fieldOf(el: HTMLElement): { id: string; field: keyof Entry } | null {
       const attr = el.getAttribute('data-editable') ?? el.getAttribute('data-editable-href');
@@ -140,8 +126,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           const entry = working.get(target.id);
           if (!entry) return;
           (entry as unknown as Record<string, unknown>)[target.field] = el.textContent ?? '';
-          reportStatus('dirty');
-          scheduleSave();
+          autosaver.schedule();
         });
       });
 
@@ -153,8 +138,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           const entry = working.get(target.id);
           if (!entry) return;
           (entry as unknown as Record<string, unknown>)[target.field] = el.value.length > 0 ? el.value : null;
-          reportStatus('dirty');
-          scheduleSave();
+          autosaver.schedule();
         });
       });
 
@@ -171,8 +155,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           entry.href = value.length > 0 ? value : undefined;
           const valueEl = slot.querySelector('[data-editable-href-value]');
           if (valueEl) valueEl.textContent = value.length > 0 ? value : '(none)';
-          reportStatus('dirty');
-          scheduleSave();
+          autosaver.schedule();
         });
       });
 
@@ -183,8 +166,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         if (!window.confirm('Remove this entry? It will be deleted from the draft on next save.')) return;
         working.delete(id);
         slot.remove();
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
     }
 
@@ -222,15 +204,14 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       };
       working.set(id, newEntry);
       wireSlot(slot);
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
 
       const categoryEl = slot.querySelector<HTMLElement>('[data-editable$=".category"]');
       categoryEl?.focus();
     });
 
     window.addEventListener('editor:save-all', () => {
-      void doSave();
+      void autosaver.flush();
     });
   }
 
@@ -244,30 +225,17 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       ).__editorSeed.emptyStates ?? { projects: '', experience: '', blog: '', contact: '' };
       const workingEmptyStates = { ...seedEmptyStates };
 
-      let esStatus: SaveStatus = 'idle';
-      function reportEsStatus(next: SaveStatus) {
-        esStatus = next;
-        window.dispatchEvent(
-          new CustomEvent('editor:area-status', { detail: { status: esStatus, label: statusLabel(esStatus) } })
-        );
-      }
-
-      async function saveEmptyStates() {
-        reportEsStatus('saving');
-        const result = await saveArea('emptyStates', workingEmptyStates);
-        reportEsStatus(result.ok ? 'saved' : 'error');
-      }
-
-      const scheduleEsSave = debounce(saveEmptyStates, 1500);
+      const emptyStatesAutosaver = makeAutosaver({
+        save: () => saveArea('emptyStates', workingEmptyStates),
+      });
 
       emptyStateEl.addEventListener('input', () => {
         workingEmptyStates[areaName] = emptyStateEl.value;
-        reportEsStatus('dirty');
-        scheduleEsSave();
+        emptyStatesAutosaver.schedule();
       });
 
       window.addEventListener('editor:save-all', () => {
-        void saveEmptyStates();
+        void emptyStatesAutosaver.flush();
       });
     }
   }
