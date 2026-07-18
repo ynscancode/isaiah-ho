@@ -64,8 +64,7 @@ const { contact, emptyStates } = Astro.props;
 </script>
 
 <script>
-  import { debounce, saveArea, setPath, statusLabel, uniqueId } from '../../lib/editor/client';
-  import type { SaveStatus } from '../../lib/editor/client';
+  import { makeAutosaver, saveArea, uniqueId } from '../../lib/editor/client';
   import type { ContactLink } from './EditContact.astro';
 
   const AREA = 'contact';
@@ -77,26 +76,15 @@ const { contact, emptyStates } = Astro.props;
       .contactLinks;
     const working = new Map<string, ContactLink>(seedLinks.map((link) => [link.id, { ...link }]));
 
-    let status: SaveStatus = 'idle';
-    function reportStatus(next: SaveStatus) {
-      status = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
-      );
-    }
-
-    async function doSave() {
-      reportStatus('saving');
-      const payload = { lede: ledeEl!.textContent ?? '', links: Array.from(working.values()) };
-      const result = await saveArea(AREA, payload);
-      reportStatus(result.ok ? 'saved' : 'error');
-    }
-
-    const scheduleSave = debounce(doSave, 1500);
+    const autosaver = makeAutosaver({
+      save: () => {
+        const payload = { lede: ledeEl!.textContent ?? '', links: Array.from(working.values()) };
+        return saveArea(AREA, payload);
+      },
+    });
 
     ledeEl.addEventListener('input', () => {
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
 
     function fieldOf(el: HTMLElement): { id: string; field: keyof ContactLink } | null {
@@ -127,8 +115,7 @@ const { contact, emptyStates } = Astro.props;
         if (valueEl) {
           valueEl.placeholder = entry.type === 'email' ? 'name@example.com' : 'https://...';
         }
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
 
       labelEl?.addEventListener('input', () => {
@@ -137,8 +124,7 @@ const { contact, emptyStates } = Astro.props;
         const entry = working.get(target.id);
         if (!entry) return;
         entry.label = labelEl.value;
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
 
       valueEl?.addEventListener('input', () => {
@@ -147,8 +133,7 @@ const { contact, emptyStates } = Astro.props;
         const entry = working.get(target.id);
         if (!entry) return;
         entry.value = valueEl.value;
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
 
       const removeBtn = row.querySelector<HTMLButtonElement>('[data-remove-link]');
@@ -158,8 +143,7 @@ const { contact, emptyStates } = Astro.props;
         if (!window.confirm('Remove this contact link?')) return;
         working.delete(id);
         row.remove();
-        reportStatus('dirty');
-        scheduleSave();
+        autosaver.schedule();
       });
     }
 
@@ -190,15 +174,14 @@ const { contact, emptyStates } = Astro.props;
       `;
       list.appendChild(row);
       wireRow(row);
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
 
       const typeEl = row.querySelector<HTMLSelectElement>('.contact-link-type');
       typeEl?.focus();
     });
 
     window.addEventListener('editor:save-all', () => {
-      void doSave();
+      void autosaver.flush();
     });
   }
 
@@ -210,30 +193,17 @@ const { contact, emptyStates } = Astro.props;
     ).__editorSeed.emptyStates;
     const workingEmptyStates = { ...seedEmptyStates };
 
-    let esStatus: SaveStatus = 'idle';
-    function reportEsStatus(next: SaveStatus) {
-      esStatus = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status: esStatus, label: statusLabel(esStatus) } })
-      );
-    }
-
-    async function saveEmptyStates() {
-      reportEsStatus('saving');
-      const result = await saveArea('emptyStates', workingEmptyStates);
-      reportEsStatus(result.ok ? 'saved' : 'error');
-    }
-
-    const scheduleEsSave = debounce(saveEmptyStates, 1500);
+    const emptyStatesAutosaver = makeAutosaver({
+      save: () => saveArea('emptyStates', workingEmptyStates),
+    });
 
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.contact = emptyStateEl.value;
-      reportEsStatus('dirty');
-      scheduleEsSave();
+      emptyStatesAutosaver.schedule();
     });
 
     window.addEventListener('editor:save-all', () => {
-      void saveEmptyStates();
+      void emptyStatesAutosaver.flush();
     });
   }
 </script>

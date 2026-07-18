@@ -9,3 +9,10 @@ export const SITE_JSON_PATH = 'src/data/site.json';
 export const PROJECTS_JSON_PATH = 'src/data/projects.json';
 export const EXPERIENCE_JSON_PATH = 'src/data/experience.json';
 export const BLOG_DIR = 'src/content/blog/';
+
+// Whitelist for about-profile-image public paths. This is the SOLE security
+// control for the /api/draft/asset read proxy (tech-lead-20260718T025025,
+// KB-0017) and is reused by src/lib/schemas.ts's write-path validation
+// (aboutBodySchema.image / .baseImage) so both sides can never drift onto
+// different patterns. Do not duplicate this literal anywhere else.
+export const ABOUT_IMAGE_PUBLIC_PATH_RE = /^\/about\/profile-[a-f0-9]{16}\.(jpg|png|webp)$/;

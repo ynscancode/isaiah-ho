@@ -3,9 +3,8 @@ import {
   getFileOnBranch,
   putFileOnBranch,
   deleteFileOnBranch,
-  ensureDraftBranchSynced,
 } from '../../../lib/github';
-import { getRepoRef, getDraftBranch, getWriteToken, COMMIT_AUTHOR, MASTER_BRANCH } from '../../../lib/gitConfig';
+import { getRepoRef, getDraftBranch, getWriteToken, COMMIT_AUTHOR } from '../../../lib/gitConfig';
 import {
   heroBodySchema,
   aboutBodySchema,
@@ -81,7 +80,12 @@ export const POST: APIRoute = async ({ params, request }) => {
   const token = getWriteToken();
   const ref = getRepoRef();
   const branch = getDraftBranch();
-  await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
+  // tech-lead-20260718T041814 D1: no per-save merge here. The client's
+  // once-per-page-load ensureDraft() (src/lib/editor/client.ts, guarded by
+  // draftEnsured) already guarantees the draft branch exists (create-from-
+  // master if missing) and is master-synced before the first save of the
+  // session. Do not reintroduce a per-save ensure/merge or head-sha compare
+  // — see src/pages/api/draft/ensure.ts for the sole remaining call site.
 
   try {
     if (area === 'home' || area === 'about' || area === 'contact' || area === 'emptyStates') {
@@ -245,7 +249,8 @@ export const DELETE: APIRoute = async ({ params, request }) => {
   const token = getWriteToken();
   const ref = getRepoRef();
   const branch = getDraftBranch();
-  await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
+  // tech-lead-20260718T041814 D1: see POST above — no per-save merge; the
+  // once-per-load client ensureDraft() already guarantees branch existence.
 
   const path = `${BLOG_DIR}${slugResult.data.slug}.md`;
   if (!path.startsWith(BLOG_DIR) || path.includes('..')) {

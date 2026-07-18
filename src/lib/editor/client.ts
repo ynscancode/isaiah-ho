@@ -6,7 +6,7 @@
 // contract) and senior-backend-dev-20260716T030500 (API contract, CSRF
 // delivery via the `csrf_token` cookie).
 
-export type SaveResult = { ok: boolean; commitSha?: string; error?: string };
+export type SaveResult = { ok: boolean; commitSha?: string; error?: string; action?: string };
 
 function getCookie(name: string): string | null {
   const escaped = name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1');
@@ -90,7 +90,7 @@ export async function saveArea(area: string, body: unknown): Promise<SaveResult>
   const data = await parseJsonSafe<{ commitSha?: string; error?: string; action?: string }>(res);
   if (!res.ok) {
     checkReauthNeeded(res.status, data);
-    return { ok: false, error: data?.error ?? `http_${res.status}` };
+    return { ok: false, error: data?.error ?? `http_${res.status}`, action: data?.action };
   }
   return { ok: true, commitSha: data?.commitSha };
 }
@@ -105,7 +105,7 @@ export async function deleteBlogPost(slug: string): Promise<SaveResult> {
   if (!res.ok) {
     const data = await parseJsonSafe<{ error?: string; action?: string }>(res);
     checkReauthNeeded(res.status, data);
-    return { ok: false, error: data?.error ?? `http_${res.status}` };
+    return { ok: false, error: data?.error ?? `http_${res.status}`, action: data?.action };
   }
   return { ok: true };
 }
@@ -235,4 +235,134 @@ export function statusLabel(status: SaveStatus): string {
     default:
       return '';
   }
+}
+
+// --- Shared background-autosave helper (tech-lead-20260718T041814 D3) ---
+//
+// Every edit component's DOM update is already synchronous+optimistic; this
+// helper only owns the *save* side: debouncing, status broadcast, and
+// routing failures so they're never silently swallowed (KB-0017).
+
+/** Areas (by opaque instance id) that currently have unsaved risk — status
+ * is anything other than 'idle'/'saved'. Tracked centrally so a single
+ * beforeunload listener (installed once, below) can warn regardless of how
+ * many independent autosaver instances exist on the page (e.g. EditCollection
+ * has one for entries + one for its emptyStates field). */
+const unsavedAreas = new Set<number>();
+let autosaverIdSeq = 0;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', (event) => {
+    if (unsavedAreas.size === 0) return;
+    event.preventDefault();
+    // Legacy requirement for the prompt to actually show in most browsers.
+    event.returnValue = '';
+  });
+}
+
+export type Autosaver = {
+  /** Call on every field change. Marks the area dirty, (re)starts the
+   * debounce timer, and — if a save is already in flight — schedules
+   * exactly one trailing re-save once it resolves (never drops the last
+   * edit, never runs two saves concurrently for the same area). */
+  schedule: () => void;
+  /** Call from the Save button / `editor:save-all` path: cancels any
+   * pending debounce and saves now (still single-flight safe). Returns a
+   * promise so callers that need to know when the save (and any trailing
+   * re-save chained onto it) has settled can await it. */
+  flush: () => Promise<void>;
+};
+
+export function makeAutosaver({
+  save,
+  debounceMs = 1500,
+}: {
+  /** Must build its payload from CURRENT working state at call time — the
+   * autosaver may call this again for a trailing re-save after the working
+   * state has changed further. Return the existing SaveResult contract. */
+  save: () => Promise<SaveResult>;
+  debounceMs?: number;
+}): Autosaver {
+  const id = autosaverIdSeq++;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight = false;
+  let pendingResave = false;
+
+  function setStatus(next: SaveStatus, opts?: { silent?: boolean }) {
+    if (next === 'idle' || next === 'saved') {
+      unsavedAreas.delete(id);
+    } else {
+      unsavedAreas.add(id);
+    }
+    if (opts?.silent) return;
+    window.dispatchEvent(
+      new CustomEvent('editor:area-status', { detail: { status: next, label: statusLabel(next) } })
+    );
+  }
+
+  async function runSave(): Promise<void> {
+    if (inFlight) {
+      // Single-flight: mark exactly one trailing re-save, don't run
+      // concurrently. The re-save (when it fires) re-invokes `save()`,
+      // which reads working state at THAT later call time.
+      pendingResave = true;
+      return;
+    }
+    inFlight = true;
+    setStatus('saving');
+    let result: SaveResult;
+    try {
+      result = await save();
+    } catch {
+      result = { ok: false, error: 'network_error' };
+    }
+    inFlight = false;
+
+    if (result.ok) {
+      setStatus('saved');
+    } else if (result.error === 'csrf_invalid') {
+      // saveArea()/deleteBlogPost() already dispatched the EXISTING
+      // editor:reauth-needed event (unchanged behavior) — EditorHarness
+      // owns the "Session expired" status text for that case, so don't
+      // fight it with a generic "Save failed" broadcast. Still track the
+      // area as unsaved for the beforeunload warning.
+      setStatus('error', { silent: true });
+    } else if (result.error === 'stale_form') {
+      // New event: EditorHarness (and any component with extra local
+      // affordances, e.g. EditAbout's reload button) shows a "content
+      // changed on the server — reload to continue" message. NEVER
+      // auto-reload — that would silently drop unsaved edits.
+      window.dispatchEvent(new CustomEvent('editor:stale-form'));
+      setStatus('error', { silent: true });
+    } else {
+      // Generic/other failure: surface it and leave the area dirty so the
+      // next edit (schedule()) or the Save button / editor:save-all
+      // (flush()) retries — a failed background save is never silently lost.
+      setStatus('error');
+    }
+
+    if (pendingResave) {
+      pendingResave = false;
+      await runSave();
+    }
+  }
+
+  function schedule() {
+    setStatus('dirty');
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      void runSave();
+    }, debounceMs);
+  }
+
+  async function flush(): Promise<void> {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    await runSave();
+  }
+
+  return { schedule, flush };
 }

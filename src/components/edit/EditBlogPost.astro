@@ -70,8 +70,8 @@ const { post, isNew } = Astro.props;
 </script>
 
 <script>
-  import { debounce, saveArea, slugify, statusLabel } from '../../lib/editor/client';
-  import type { SaveStatus } from '../../lib/editor/client';
+  import { makeAutosaver, saveArea, slugify } from '../../lib/editor/client';
+  import type { SaveResult } from '../../lib/editor/client';
   import type { BlogPostData } from './EditBlogPost.astro';
 
   const container = document.querySelector<HTMLElement>('[data-editable-area="blog"]');
@@ -92,23 +92,16 @@ const { post, isNew } = Astro.props;
     // src/pages/api/content/[area].ts trust-boundary check).
     let originalSlug: string | undefined = isNew ? undefined : seed.post.slug;
 
-    let status: SaveStatus = 'idle';
-    function reportStatus(next: SaveStatus) {
-      status = next;
-      window.dispatchEvent(
-        new CustomEvent('editor:area-status', { detail: { status, label: statusLabel(status) } })
-      );
-    }
-
-    async function doSave() {
+    async function saveBlogPost(): Promise<SaveResult> {
       if (!working.title.trim()) {
-        reportStatus('error');
-        return;
+        // Client-side guard only — never sent to the server. Treated as a
+        // generic failure by the autosaver: status -> 'error', area stays
+        // dirty, next edit/save retries once there's a title to send.
+        return { ok: false, error: 'missing_title' };
       }
       if (!slugLocked) {
         working.slug = slugify(working.title);
       }
-      reportStatus('saving');
       const payload = originalSlug !== undefined ? { ...working, originalSlug } : working;
       const result = await saveArea('blog', payload);
       if (result.ok) {
@@ -121,10 +114,10 @@ const { post, isNew } = Astro.props;
           window.history.replaceState(null, '', `/edit/blog/${working.slug}`);
         }
       }
-      reportStatus(result.ok ? 'saved' : 'error');
+      return result;
     }
 
-    const scheduleSave = debounce(doSave, 1500);
+    const autosaver = makeAutosaver({ save: saveBlogPost });
 
     const titleEl = document.getElementById('post-title') as HTMLInputElement;
     const descEl = document.getElementById('post-description') as HTMLInputElement;
@@ -135,40 +128,34 @@ const { post, isNew } = Astro.props;
 
     titleEl.addEventListener('input', () => {
       working.title = titleEl.value;
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
     descEl.addEventListener('input', () => {
       working.description = descEl.value;
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
     dateEl.addEventListener('input', () => {
       working.date = dateEl.value;
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
     draftEl.addEventListener('change', () => {
       working.draft = draftEl.checked;
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
     tagsEl.addEventListener('input', () => {
       working.tags = tagsEl.value
         .split(',')
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0);
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
     bodyEl.addEventListener('input', () => {
       working.body = bodyEl.value;
-      reportStatus('dirty');
-      scheduleSave();
+      autosaver.schedule();
     });
 
     window.addEventListener('editor:save-all', () => {
-      void doSave();
+      void autosaver.flush();
     });
   }
 </script>
