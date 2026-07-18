@@ -77,6 +77,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
 
 <script>
   import { makeAutosaver, saveArea, slugify, uniqueId } from '../../lib/editor/client';
+  import { commitAtomic, register, unregister, wireField } from '../../lib/editor/history';
 
   type Entry = {
     id: string;
@@ -112,6 +113,9 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
     }
 
     function wireSlot(slot: HTMLElement) {
+      const entryId = slot.getAttribute('data-entry-id');
+      const historyIds: string[] = [];
+
       // contenteditable text fields (category/title/body)
       slot.querySelectorAll<HTMLElement>('[contenteditable="true"][data-editable]').forEach((el) => {
         el.addEventListener('input', () => {
@@ -128,6 +132,25 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           (entry as unknown as Record<string, unknown>)[target.field] = el.textContent ?? '';
           autosaver.schedule();
         });
+
+        const target = fieldOf(el);
+        if (target) {
+          const historyId = `${areaName}:${target.id}.${target.field}`;
+          historyIds.push(historyId);
+          wireField({
+            id: historyId,
+            el,
+            getValue: () => el.textContent ?? '',
+            setValue: (value) => {
+              el.textContent = value;
+            },
+            onApply: (value) => {
+              const entry = working.get(target.id);
+              if (entry) (entry as unknown as Record<string, unknown>)[target.field] = value;
+              autosaver.schedule();
+            },
+          });
+        }
       });
 
       // native date pickers (startDate/endDate)
@@ -140,6 +163,25 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           (entry as unknown as Record<string, unknown>)[target.field] = el.value.length > 0 ? el.value : null;
           autosaver.schedule();
         });
+
+        const target = fieldOf(el);
+        if (target) {
+          const historyId = `${areaName}:${target.id}.${target.field}`;
+          historyIds.push(historyId);
+          wireField({
+            id: historyId,
+            el,
+            getValue: () => el.value,
+            setValue: (value) => {
+              el.value = value;
+            },
+            onApply: (value) => {
+              const entry = working.get(target.id);
+              if (entry) (entry as unknown as Record<string, unknown>)[target.field] = value.length > 0 ? value : null;
+              autosaver.schedule();
+            },
+          });
+        }
       });
 
       slot.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
@@ -156,6 +198,20 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           const valueEl = slot.querySelector('[data-editable-href-value]');
           if (valueEl) valueEl.textContent = value.length > 0 ? value : '(none)';
           autosaver.schedule();
+
+          const historyId = `${areaName}:${target.id}.href`;
+          register({
+            id: historyId,
+            read: () => working.get(target.id)?.href ?? '',
+            apply: (v) => {
+              const e = working.get(target.id);
+              if (e) e.href = v.length > 0 ? v : undefined;
+              const vEl = slot.querySelector('[data-editable-href-value]');
+              if (vEl) vEl.textContent = v.length > 0 ? v : '(none)';
+              autosaver.schedule();
+            },
+          });
+          commitAtomic(historyId, current, value);
         });
       });
 
@@ -166,6 +222,8 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         if (!window.confirm('Remove this entry? It will be deleted from the draft on next save.')) return;
         working.delete(id);
         slot.remove();
+        historyIds.forEach((historyId) => unregister(historyId));
+        if (entryId) unregister(`${areaName}:${entryId}.href`);
         autosaver.schedule();
       });
     }
@@ -232,6 +290,19 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       emptyStateEl.addEventListener('input', () => {
         workingEmptyStates[areaName] = emptyStateEl.value;
         emptyStatesAutosaver.schedule();
+      });
+
+      wireField({
+        id: `${areaName}:emptyState`,
+        el: emptyStateEl,
+        getValue: () => emptyStateEl.value,
+        setValue: (value) => {
+          emptyStateEl.value = value;
+        },
+        onApply: (value) => {
+          workingEmptyStates[areaName] = value;
+          emptyStatesAutosaver.schedule();
+        },
       });
 
       window.addEventListener('editor:save-all', () => {

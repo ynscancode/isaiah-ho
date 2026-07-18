@@ -30,6 +30,8 @@ const { contentSource } = Astro.props;
   </div>
   <div class="editor-toolbar-actions">
     <button type="button" id="editor-save-btn" class="editor-btn editor-btn-primary" disabled={contentSource === 'build'}>Save to draft</button>
+    <button type="button" id="editor-undo-btn" class="editor-btn" disabled>Undo</button>
+    <button type="button" id="editor-redo-btn" class="editor-btn" disabled>Redo</button>
     <button type="button" id="editor-preview-btn" class="editor-btn">Preview</button>
     <button type="button" id="editor-publish-btn" class="editor-btn editor-btn-publish">Publish</button>
     <button type="button" id="editor-logout-btn" class="editor-btn editor-btn-ghost">Log out</button>
@@ -105,6 +107,15 @@ const { contentSource } = Astro.props;
 
   .editor-btn:hover {
     border-color: var(--signal, #c87f0a);
+  }
+
+  .editor-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #5f6990;
+  }
+  .editor-btn:disabled:hover {
+    border-color: #5f6990;
   }
 
   .editor-btn-primary {
@@ -273,7 +284,7 @@ const { contentSource } = Astro.props;
     border: 1px solid var(--line, #d8d3c7);
     border-radius: 2px;
     background: #fff;
-    color: inherit;
+    color: var(--ink, #12182b);
   }
 
   .editor-textarea {
@@ -288,6 +299,12 @@ const { contentSource } = Astro.props;
     border: 1px solid var(--line, #d8d3c7);
     border-radius: 4px;
     background: #fdfcfa;
+    color: var(--ink, #12182b);
+  }
+
+  select.editor-input {
+    color: var(--ink, #12182b);
+    background: #fff;
   }
 
   .editor-inline-controls {
@@ -305,14 +322,54 @@ const { contentSource } = Astro.props;
     logoutAndRedirect,
     publishDraft,
   } from '../lib/editor/client';
+  import { canRedo, canUndo, redo, undo } from '../lib/editor/history';
 
   const statusText = document.getElementById('editor-status-text');
   const message = document.getElementById('editor-message');
   const saveBtn = document.getElementById('editor-save-btn') as HTMLButtonElement | null;
+  const undoBtn = document.getElementById('editor-undo-btn') as HTMLButtonElement | null;
+  const redoBtn = document.getElementById('editor-redo-btn') as HTMLButtonElement | null;
   const previewBtn = document.getElementById('editor-preview-btn');
   const publishBtn = document.getElementById('editor-publish-btn');
   const logoutBtn = document.getElementById('editor-logout-btn');
   const conflictBanner = document.getElementById('editor-conflict-banner');
+
+  // --- Item 5: undo/redo toolbar controls ---
+  // Item 5 design (tech-lead-20260718T082028 / ui-ux-designer-20260718T103000):
+  // buttons stay disabled until the shared history singleton reports a
+  // non-empty stack; undo()/redo() themselves route field application
+  // through the SAME makeAutosaver path each field already uses, so save
+  // failures/stale_form surface exactly like a manual edit (no parallel UI
+  // needed here).
+  function syncHistoryButtons() {
+    if (undoBtn) undoBtn.disabled = !canUndo();
+    if (redoBtn) redoBtn.disabled = !canRedo();
+  }
+  syncHistoryButtons();
+  window.addEventListener('editor:history-changed', syncHistoryButtons);
+
+  undoBtn?.addEventListener('click', () => undo());
+  redoBtn?.addEventListener('click', () => redo());
+
+  // Nice-to-have keyboard shortcuts (ui-ux-designer-20260718T103000): only
+  // fire when focus is OUTSIDE an input/textarea/contenteditable, so the
+  // browser's native in-field keystroke undo is never shadowed.
+  window.addEventListener('keydown', (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
+    const active = document.activeElement;
+    const tag = active?.tagName;
+    const isEditable =
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      (active instanceof HTMLElement && active.isContentEditable);
+    if (isEditable) return;
+    event.preventDefault();
+    if (event.shiftKey) {
+      redo();
+    } else {
+      undo();
+    }
+  });
 
   function setMessage(text: string) {
     if (message) message.textContent = text;

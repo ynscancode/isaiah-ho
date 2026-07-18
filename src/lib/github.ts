@@ -168,6 +168,11 @@ export async function ensureDraftBranchSynced(
 
 export type GetFileResult = { sha: string; contentBase64: string } | null;
 
+/** Note (tech-lead-20260718T082028 §A4): despite the `branch` param name,
+ * GitHub's `?ref=` accepts any commit-ish — a branch name, tag, OR a raw
+ * commit sha. The revert flow (`src/pages/api/draft/revert.ts`) reuses this
+ * function with a commit sha in `branch` to read a path AS OF that historic
+ * commit. Not renamed (non-breaking / minimal diff). */
 export async function getFileOnBranch(
   token: string,
   ref: RepoRef,
@@ -314,6 +319,93 @@ export async function mergeBranches(
   }
   const data = (await res.json()) as { sha: string };
   return { merged: true, sha: data.sha };
+}
+
+// ---- Read-only history/revert helpers (tech-lead-20260718T082028 §A) ----
+// Reused for item 4 (changelog + safe revert). No write/merge/force calls
+// live in this section — every function here is a plain GET.
+
+export type CommitSummary = { sha: string; message: string; date: string };
+
+/** Last `perPage` commits reachable from `branch`, newest first. Deliberately
+ * does NOT fetch each commit's `files[]` — the list endpoint doesn't return
+ * that, and fetching per-commit detail for a purely cosmetic area badge (the
+ * client parses it from the message prefix, PO decision) would be `perPage`
+ * extra API calls for no security or correctness benefit. Returns `[]` on an
+ * empty/absent branch (404) rather than throwing, matching this module's
+ * null/empty-on-absence convention. */
+export async function listCommitsOnBranch(
+  token: string,
+  ref: RepoRef,
+  branch: string,
+  perPage = 30
+): Promise<CommitSummary[]> {
+  const res = await githubFetch(
+    token,
+    `/repos/${ref.owner}/${ref.repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${perPage}`
+  );
+  if (res.status === 404 || res.status === 409) return []; // 409 = empty repo/branch with no commits.
+  if (!res.ok) throw new GitHubApiError(`Failed to list commits on ${branch}`, res.status);
+  const data = (await res.json()) as Array<{
+    sha: string;
+    commit: { message: string; author: { date: string } };
+  }>;
+  return data.map((c) => ({ sha: c.sha, message: c.commit.message, date: c.commit.author.date }));
+}
+
+export type CommitDetail = {
+  parents: string[];
+  files: { filename: string; status: string }[];
+};
+
+/** Full detail for one commit, including the files it touched
+ * (added/modified/removed/renamed) and its parent shas. This is how the
+ * server RE-DERIVES which paths a revert target commit touched — the client
+ * only ever supplies a sha, never a path list (KB-0017). 404 -> null. */
+export async function getCommitDetail(
+  token: string,
+  ref: RepoRef,
+  sha: string
+): Promise<CommitDetail | null> {
+  const res = await githubFetch(token, `/repos/${ref.owner}/${ref.repo}/commits/${encodeURIComponent(sha)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubApiError(`Failed to read commit ${sha}`, res.status);
+  const data = (await res.json()) as {
+    parents: { sha: string }[];
+    files?: { filename: string; status: string }[];
+  };
+  return {
+    parents: data.parents.map((p) => p.sha),
+    files: data.files ?? [],
+  };
+}
+
+export type CompareResult = { baseSha: string; mergeBaseSha: string; status: string };
+
+/** Compare two commit-ishes. Used solely for the revert ancestor gate:
+ * `compareCommits(base=targetSha, head=draftHead)` and requiring
+ * `mergeBaseSha === baseSha` proves `targetSha` is an ancestor of the
+ * current draft HEAD (i.e. genuinely reachable history, not an arbitrary
+ * foreign sha the client made up). 404 -> null (e.g. targetSha doesn't
+ * exist in this repo at all). */
+export async function compareCommits(
+  token: string,
+  ref: RepoRef,
+  base: string,
+  head: string
+): Promise<CompareResult | null> {
+  const res = await githubFetch(
+    token,
+    `/repos/${ref.owner}/${ref.repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new GitHubApiError(`Failed to compare ${base}...${head}`, res.status);
+  const data = (await res.json()) as {
+    base_commit: { sha: string };
+    merge_base_commit: { sha: string };
+    status: string;
+  };
+  return { baseSha: data.base_commit.sha, mergeBaseSha: data.merge_base_commit.sha, status: data.status };
 }
 
 /** Delete a branch ref (tech-lead-20260717T090321 Decision 1d — recreate the

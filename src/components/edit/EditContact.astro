@@ -66,6 +66,7 @@ const { contact, emptyStates } = Astro.props;
 <script>
   import { makeAutosaver, saveArea, uniqueId } from '../../lib/editor/client';
   import type { ContactLink } from './EditContact.astro';
+  import { unregister, wireField } from '../../lib/editor/history';
 
   const AREA = 'contact';
   const ledeEl = document.querySelector<HTMLElement>('[data-editable="lede"][data-editable-area="contact"]');
@@ -87,6 +88,16 @@ const { contact, emptyStates } = Astro.props;
       autosaver.schedule();
     });
 
+    wireField({
+      id: 'contact:lede',
+      el: ledeEl,
+      getValue: () => ledeEl!.textContent ?? '',
+      setValue: (value) => {
+        ledeEl!.textContent = value;
+      },
+      onApply: () => autosaver.schedule(),
+    });
+
     function fieldOf(el: HTMLElement): { id: string; field: keyof ContactLink } | null {
       const attr = el.getAttribute('data-link-field');
       if (!attr) return null;
@@ -100,7 +111,8 @@ const { contact, emptyStates } = Astro.props;
       const labelEl = row.querySelector<HTMLInputElement>('.contact-link-label');
       const valueEl = row.querySelector<HTMLInputElement>('.contact-link-value');
 
-      typeEl?.addEventListener('change', () => {
+      function applyTypeChange(focusLabel: boolean) {
+        if (!typeEl) return;
         const target = fieldOf(typeEl);
         if (!target) return;
         const entry = working.get(target.id);
@@ -108,7 +120,7 @@ const { contact, emptyStates } = Astro.props;
         entry.type = typeEl.value as ContactLink['type'];
         if (labelEl) {
           labelEl.disabled = entry.type !== 'other';
-          if (entry.type === 'other' && labelEl.value.trim().length === 0) {
+          if (focusLabel && entry.type === 'other' && labelEl.value.trim().length === 0) {
             labelEl.focus();
           }
         }
@@ -116,7 +128,9 @@ const { contact, emptyStates } = Astro.props;
           valueEl.placeholder = entry.type === 'email' ? 'name@example.com' : 'https://...';
         }
         autosaver.schedule();
-      });
+      }
+
+      typeEl?.addEventListener('change', () => applyTypeChange(true));
 
       labelEl?.addEventListener('input', () => {
         const target = fieldOf(labelEl);
@@ -136,6 +150,56 @@ const { contact, emptyStates } = Astro.props;
         autosaver.schedule();
       });
 
+      // Item 5: per-field undo/redo for this row's controls. Structural
+      // (add/remove-row) undo is deferred (tech-lead-20260718T082028 /
+      // PO AC7) — unregister() below just makes a stale step for a removed
+      // row a safe no-op rather than corrupting `working`.
+      const rowId = row.getAttribute('data-link-id');
+      if (rowId && typeEl) {
+        wireField({
+          id: `contact:link:${rowId}.type`,
+          el: typeEl,
+          getValue: () => typeEl.value,
+          setValue: (value) => {
+            typeEl.value = value;
+          },
+          onApply: () => applyTypeChange(false),
+          commitEvent: 'change',
+        });
+      }
+      if (rowId && labelEl) {
+        wireField({
+          id: `contact:link:${rowId}.label`,
+          el: labelEl,
+          getValue: () => labelEl.value,
+          setValue: (value) => {
+            labelEl.value = value;
+          },
+          onApply: () => {
+            const target = fieldOf(labelEl);
+            const entry = target && working.get(target.id);
+            if (entry) entry.label = labelEl.value;
+            autosaver.schedule();
+          },
+        });
+      }
+      if (rowId && valueEl) {
+        wireField({
+          id: `contact:link:${rowId}.value`,
+          el: valueEl,
+          getValue: () => valueEl.value,
+          setValue: (value) => {
+            valueEl.value = value;
+          },
+          onApply: () => {
+            const target = fieldOf(valueEl);
+            const entry = target && working.get(target.id);
+            if (entry) entry.value = valueEl.value;
+            autosaver.schedule();
+          },
+        });
+      }
+
       const removeBtn = row.querySelector<HTMLButtonElement>('[data-remove-link]');
       removeBtn?.addEventListener('click', () => {
         const id = removeBtn.getAttribute('data-remove-link');
@@ -143,6 +207,9 @@ const { contact, emptyStates } = Astro.props;
         if (!window.confirm('Remove this contact link?')) return;
         working.delete(id);
         row.remove();
+        unregister(`contact:link:${id}.type`);
+        unregister(`contact:link:${id}.label`);
+        unregister(`contact:link:${id}.value`);
         autosaver.schedule();
       });
     }
@@ -200,6 +267,19 @@ const { contact, emptyStates } = Astro.props;
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.contact = emptyStateEl.value;
       emptyStatesAutosaver.schedule();
+    });
+
+    wireField({
+      id: 'contact:emptyState',
+      el: emptyStateEl,
+      getValue: () => emptyStateEl.value,
+      setValue: (value) => {
+        emptyStateEl.value = value;
+      },
+      onApply: (value) => {
+        workingEmptyStates.contact = value;
+        emptyStatesAutosaver.schedule();
+      },
     });
 
     window.addEventListener('editor:save-all', () => {
