@@ -100,7 +100,20 @@ export type SessionPayload = {
 };
 
 export const SESSION_COOKIE_NAME = '__Host-session';
-export const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60; // ~8h
+// Sliding-session window: with the renewal below, this is the *idle* timeout —
+// the session only lapses after this long with no authenticated request, not
+// this long after login.
+export const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60; // ~8h idle
+
+// Renew the cookie at most once per this interval of activity, so an active
+// editing session's expiry keeps sliding forward without emitting a Set-Cookie
+// on literally every request.
+export const SESSION_RENEW_AFTER_SECONDS = 30 * 60; // 30 min
+// Absolute cap measured from the original login (iat is preserved across
+// renewals). A session can slide for at most this long before a fresh
+// interactive login is required — this bounds the lifetime of a stolen cookie
+// even under continuous use, which an unbounded sliding session would not.
+export const SESSION_ABSOLUTE_MAX_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 export async function mintSessionToken(
   sub: string,
@@ -110,6 +123,34 @@ export async function mintSessionToken(
   const exp = iat + SESSION_MAX_AGE_SECONDS;
   const token = await signPayload({ sub, iat, exp } satisfies SessionPayload, secret);
   return { token, iat, exp };
+}
+
+/** Re-mint a session token that PRESERVES the original `iat` — critical
+ * because the double-submit CSRF token is derived from `iat`
+ * (csrfTokenForSession), so preserving it keeps the already-issued CSRF
+ * cookie valid — while pushing `exp` forward to now + SESSION_MAX_AGE_SECONDS.
+ * Used by the sliding-session renewal in middleware. */
+export async function renewSessionToken(
+  session: SessionPayload,
+  secret: string
+): Promise<{ token: string; iat: number; exp: number }> {
+  const now = Math.floor(Date.now() / 1000);
+  const iat = session.iat;
+  const exp = now + SESSION_MAX_AGE_SECONDS;
+  const token = await signPayload({ sub: session.sub, iat, exp } satisfies SessionPayload, secret);
+  return { token, iat, exp };
+}
+
+/** Whether a currently-valid session is old enough since its last mint to be
+ * worth renewing, AND still within its absolute lifetime cap from the
+ * original login. False on both edges avoids Set-Cookie churn on every
+ * request and refuses to extend a session past the hard cap. */
+export function shouldRenewSession(session: SessionPayload): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  const lastMint = session.exp - SESSION_MAX_AGE_SECONDS;
+  const elapsedSinceMint = now - lastMint;
+  const withinAbsoluteCap = now - session.iat < SESSION_ABSOLUTE_MAX_SECONDS;
+  return elapsedSinceMint >= SESSION_RENEW_AFTER_SECONDS && withinAbsoluteCap;
 }
 
 export async function verifySessionToken(

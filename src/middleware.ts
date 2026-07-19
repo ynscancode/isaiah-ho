@@ -1,8 +1,13 @@
 import { defineMiddleware } from 'astro:middleware';
 import {
   SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS,
+  CSRF_COOKIE_NAME,
   verifySessionToken,
   verifyCsrfToken,
+  renewSessionToken,
+  shouldRenewSession,
+  csrfTokenForSession,
 } from './lib/session';
 import { optionalEnv } from './lib/env';
 
@@ -84,6 +89,37 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (!session) {
     return generic404();
+  }
+
+  // Sliding session: keep an actively-used editor session alive by pushing its
+  // expiry forward on authenticated requests, so the admin isn't logged out
+  // mid-work after a fixed window. iat is preserved (so the CSRF token stays
+  // valid), the renewal is throttled to at most once per
+  // SESSION_RENEW_AFTER_SECONDS, and it's refused past the absolute lifetime
+  // cap — all decided in shouldRenewSession/renewSessionToken (lib/session.ts).
+  if (secret && shouldRenewSession(session)) {
+    const renewed = await renewSessionToken(session, secret);
+    cookies.set(SESSION_COOKIE_NAME, renewed.token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+    // Refresh the companion CSRF cookie's lifetime too, else it would expire
+    // at its original mint time and break mutating requests even though the
+    // session slid forward. Its VALUE is derived from sub+iat (both unchanged
+    // across renewal), so this re-sets the identical token with a fresh
+    // maxAge — no CSRF rotation, no race with in-flight requests that already
+    // read the old (identical) value.
+    const csrfToken = await csrfTokenForSession({ sub: session.sub, iat: renewed.iat, exp: renewed.exp }, secret);
+    cookies.set(CSRF_COOKIE_NAME, csrfToken, {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
   }
 
   const method = request.method.toUpperCase();
