@@ -69,6 +69,68 @@ import Band from '../Band.astro';
     }
   }
 
+  // Human-readable area names for the collapsed-card single-line summary
+  // (ui-ux-designer-20260719T104512 §1). Cosmetic only — never used for any
+  // trust/security decision; the sha sent to revertDraft is derived
+  // independently (see handleRestore call sites).
+  const AREA_LABELS: Record<string, string> = {
+    home: 'Home',
+    about: 'About',
+    contact: 'Contact',
+    emptyStates: 'Empty states',
+    site: 'Site content',
+    projects: 'Projects',
+    experience: 'Experience',
+    blog: 'Blog',
+    sync: 'Sync',
+  };
+  const GENERIC_AREA_LABEL = 'content';
+  function friendlyArea(code: string): string {
+    return AREA_LABELS[code] ?? GENERIC_AREA_LABEL;
+  }
+
+  /** Single-line summary for a single-commit "session" (today's plain row) —
+   * derived from the already-parsed commit, never the raw message (that raw
+   * fallback was the overflow bug). ui-ux-designer-20260719T104512 §1(c)/(d). */
+  function summarizeCommit(parsed: ParsedCommit, rawMessage: string): string {
+    switch (parsed.kind) {
+      case 'update-site':
+      case 'update-isolated':
+        return `Edited ${friendlyArea(parsed.area)}`;
+      case 'update-blog':
+        return 'Edited Blog';
+      case 'delete-blog':
+        return 'Deleted blog post';
+      case 'other':
+        if (/^Sync master into editor-draft$/.test(rawMessage.split('\n')[0].trim())) {
+          return 'Synced from live site';
+        }
+        return 'Edited content';
+    }
+  }
+
+  /** Single-line summary for a collapsed multi-commit session card, built
+   * from `session.areas` (already distinct, newest-first) mapped through
+   * `friendlyArea` and re-deduped. ui-ux-designer-20260719T104512 §1(a)/(b). */
+  function summarizeSession(session: HistorySession): string {
+    const names: string[] = [];
+    session.areas.forEach((code) => {
+      const label = friendlyArea(code);
+      if (!names.includes(label)) names.push(label);
+    });
+    if (names.length <= 1) {
+      return `Edited ${names[0] ?? GENERIC_AREA_LABEL}`;
+    }
+    if (names.length === 2) {
+      return `Edited ${names[0]} & ${names[1]}`;
+    }
+    if (names.length === 3) {
+      return `Edited ${names[0]}, ${names[1]} & ${names[2]}`;
+    }
+    const more = names.length - 2;
+    return `Edited ${names[0]}, ${names[1]} & ${more} more`;
+  }
+
   function confirmCopy(parsed: ParsedCommit, timestamp: string): string {
     switch (parsed.kind) {
       case 'update-site':
@@ -89,12 +151,32 @@ import Band from '../Band.astro';
     const diffSec = Math.round(diffMs / 1000);
     if (diffSec < 60) return 'Just now';
     const diffMin = Math.round(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
     const diffHr = Math.round(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`;
     const diffDay = Math.round(diffHr / 24);
-    if (diffDay < 30) return `${diffDay}d ago`;
+    if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
     return date.toLocaleDateString();
+  }
+
+  /** Locked absolute timestamp format (engineering-director-20260719T103859):
+   * built from LOCAL Date parts via toLocaleString/Intl options — NEVER
+   * toISOString()/UTC slicing (KB-0003). */
+  function formatAbsolute(date: Date): string {
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+
+  /** Locked combined timestamp label: "{absolute} · {relative}", e.g.
+   * "Jul 19, 2026, 6:24 PM · 2 hours ago" (engineering-director
+   * -20260719T103859, ui-ux-designer-20260719T104512 §2). */
+  function formatTimeLabel(date: Date): string {
+    return `${formatAbsolute(date)} · ${formatRelative(date)}`;
   }
 
   const statusEl = document.getElementById('history-status');
@@ -151,7 +233,8 @@ import Band from '../Band.astro';
   function renderMemberRow(
     commit: CommitSummary,
     isHead: boolean,
-    restoreLabel: 'Restore this version' | 'Restore this edit'
+    restoreLabel: 'Restore this version' | 'Restore this edit',
+    displayText: string = commit.message.split('\n')[0].trim()
   ): HTMLLIElement {
     const parsed = parseCommit(commit.message);
     const date = new Date(commit.date);
@@ -165,13 +248,13 @@ import Band from '../Band.astro';
 
     const msg = document.createElement('span');
     msg.className = 'history-row-message';
-    msg.textContent = commit.message.split('\n')[0].trim();
+    msg.textContent = displayText;
     li.appendChild(msg);
 
-    const time = document.createElement('span');
+    const time = document.createElement('time');
     time.className = 'history-row-time';
-    time.title = date.toLocaleString();
-    time.textContent = formatRelative(date);
+    time.setAttribute('datetime', commit.date);
+    time.textContent = formatTimeLabel(date);
     li.appendChild(time);
 
     if (isHead) {
@@ -218,21 +301,18 @@ import Band from '../Band.astro';
     toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-controls', membersId);
 
-    const badgesWrap = document.createElement('span');
-    badgesWrap.className = 'history-session-badges';
-    session.areas.forEach((area) => {
-      const badge = document.createElement('span');
-      badge.className = 'history-area-badge';
-      badge.textContent = area;
-      badgesWrap.appendChild(badge);
-    });
-    toggle.appendChild(badgesWrap);
+    const summaryText = summarizeSession(session);
+
+    const summaryTextEl = document.createElement('span');
+    summaryTextEl.className = 'history-session-summary-text';
+    summaryTextEl.textContent = summaryText;
+    toggle.appendChild(summaryTextEl);
 
     const endedDate = new Date(session.endedAt);
-    const time = document.createElement('span');
+    const time = document.createElement('time');
     time.className = 'history-row-time';
-    time.title = endedDate.toLocaleString();
-    time.textContent = formatRelative(endedDate);
+    time.setAttribute('datetime', session.endedAt);
+    time.textContent = formatTimeLabel(endedDate);
     toggle.appendChild(time);
 
     const countLabel = document.createElement('span');
@@ -255,7 +335,7 @@ import Band from '../Band.astro';
 
     toggle.setAttribute(
       'aria-label',
-      `${session.areas.join(', ')} — ${session.commitCount} edits, ${formatRelative(endedDate)}. Expand to see individual edits.`
+      `${summaryText}, ${formatTimeLabel(endedDate)}, ${session.commitCount} edits. Expand to see individual edits.`
     );
 
     summary.appendChild(toggle);
@@ -270,7 +350,7 @@ import Band from '../Band.astro';
     restoreBtn.setAttribute('data-restore-sha', session.latestSha);
     restoreBtn.setAttribute(
       'aria-label',
-      `Restore this version: ${session.areas.join(', ')}, ${formatRelative(endedDate)}`
+      `Restore this version: ${summaryText}, ${formatTimeLabel(endedDate)}`
     );
     restoreBtn.addEventListener('click', () => {
       void handleRestore(
@@ -304,9 +384,12 @@ import Band from '../Band.astro';
 
   function renderSession(session: HistorySession, isCurrentSession: boolean): HTMLLIElement {
     if (session.commitCount <= 1) {
-      // Single-commit session: plain non-expandable row, identical to
-      // today's flat-list rendering (director decision #3).
-      return renderMemberRow(session.commits[0], isCurrentSession, 'Restore this version');
+      // Single-commit session: plain non-expandable row (director decision
+      // #3), now with the same short summary + locked timestamp treatment
+      // as a session card (ui-ux-designer-20260719T104512 §4).
+      const commit = session.commits[0];
+      const displayText = summarizeCommit(parseCommit(commit.message), commit.message);
+      return renderMemberRow(session.commits[0], isCurrentSession, 'Restore this version', displayText);
     }
     return renderSessionCard(session, isCurrentSession);
   }
@@ -432,7 +515,10 @@ import Band from '../Band.astro';
   }
   .history-row-message {
     flex: 1 1 auto;
-    min-width: 180px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.85rem;
   }
@@ -480,6 +566,7 @@ import Band from '../Band.astro';
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    flex-wrap: wrap;
     flex: 1 1 auto;
     min-width: 220px;
     background: none;
@@ -495,11 +582,14 @@ import Band from '../Band.astro';
     outline: 2px solid var(--signal, #c87f0a);
     outline-offset: 2px;
   }
-  .history-session-badges {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 0.35rem;
-    flex-wrap: wrap;
+  .history-session-summary-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
   }
   .history-session-count {
     flex: 0 0 auto;
