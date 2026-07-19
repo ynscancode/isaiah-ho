@@ -120,13 +120,41 @@ export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSh
 
 export type CommitSummary = { sha: string; message: string; date: string };
 
+/** One editing session — a run of autosave commits collapsed into one
+ * version-history card (tech-lead-20260719T095958 Issue 3, Option A;
+ * grouping happens server-side in src/lib/history/sessionGrouping.ts /
+ * src/pages/api/draft/history.ts, this is purely the response shape). The
+ * session containing draft HEAD is `sessions[0]` (server preserves the
+ * commits' newest-first order, and session order follows member order).
+ * `commitCount === 1` sessions are a single real commit and should render
+ * as a plain non-expandable row (director-approved default,
+ * engineering-director-20260719T100312 #3). */
+export type HistorySession = {
+  /** Newest commit in the session — "Restore this version" target. */
+  latestSha: string;
+  /** ISO date of the oldest member (session start). */
+  startedAt: string;
+  /** ISO date of the newest member (session end). */
+  endedAt: string;
+  commitCount: number;
+  /** Distinct area badges across the session's members (collapsed-card
+   * badge text), newest-first-seen order. Cosmetic only — see
+   * sessionGrouping.ts; never used for any trust decision. */
+  areas: string[];
+  /** Members, newest-first. Each keeps its own sha/message/date so a
+   * per-edit "Restore this edit" can target any individual member via the
+   * SAME `revertDraft(sha)` below. */
+  commits: CommitSummary[];
+};
+
 /** GET /api/draft/history — session-gated, no CSRF (read-only). Returns the
- * last 30 commits on editor-draft, newest first, or null on failure (the
- * caller renders the error state, never a false-empty list). */
-export async function fetchHistory(): Promise<{ commits: CommitSummary[] } | null> {
+ * last 30 commits on editor-draft (newest first) grouped into sessions, or
+ * null on failure (the caller renders the error state, never a
+ * false-empty list). */
+export async function fetchHistory(): Promise<{ sessions: HistorySession[] } | null> {
   const res = await fetch('/api/draft/history');
   if (!res.ok) return null;
-  return parseJsonSafe<{ commits: CommitSummary[] }>(res);
+  return parseJsonSafe<{ sessions: HistorySession[] }>(res);
 }
 
 export type RevertResult =

@@ -56,11 +56,22 @@ function computeBackoffDelayMs(retryIndex: number): number {
   return Math.random() * capped;
 }
 
+// Lightweight per-request counter for latency re-measurement (tech-lead-
+// 20260719T095958 Issue 2 instrumentation). Purely additive — a module-level
+// increment + a single console.debug line, no added latency, no new failure
+// mode, never read/reset by any request-handling logic. Remove or leave in
+// place after re-measurement; it has no behavioral effect either way.
+let githubFetchRequestCount = 0;
+export function getGithubFetchRequestCount(): number {
+  return githubFetchRequestCount;
+}
+
 async function githubFetch(
   token: string,
   path: string,
   init: RequestInit = {}
 ): Promise<Response> {
+  githubFetchRequestCount++;
   const method = (init.method ?? 'GET').toUpperCase();
   const isIdempotent = method === 'GET';
   const headers = {
@@ -248,9 +259,20 @@ export async function ensureDraftBranchSynced(
   branch: string,
   fromBranch: string
 ): Promise<{ headSha: string; syncState: DraftSyncState }> {
-  const existing = await getBranchHeadSha(token, ref, branch);
+  // Compare-first (tech-lead-20260719T095958 Issue 2 micro-opt): in the
+  // common steady state (branch already exists) `compareCommits(base=branch,
+  // head=fromBranch)` alone yields BOTH the branch's current head sha
+  // (`baseSha`) AND the ahead/behind status in a single GET, so the branch
+  // no longer needs its own separate getBranchHeadSha call up front. Only
+  // when compare 404s (branch ref doesn't exist yet) do we fall back to the
+  // original create path, which re-derives things via getBranchHeadSha as
+  // before. Zero behavior change: same sync decisions, same calls made on
+  // the create path, no caching, no force/reset (KB-0019), RC1 sync anchor
+  // (recomputed live every call) intact.
+  const comparison = await compareCommits(token, ref, branch, fromBranch);
 
-  if (!existing) {
+  if (!comparison) {
+    // branch ref not found (404) -- fall back to the create path.
     const baseSha = await getBranchHeadSha(token, ref, fromBranch);
     if (!baseSha) {
       throw new GitHubApiError(`Base branch ${fromBranch} not found`, 404);
@@ -271,19 +293,17 @@ export async function ensureDraftBranchSynced(
   // A2 (tech-lead-20260718T174921 Design A2 / KB-0009): only merge
   // `fromBranch` into `branch` when `fromBranch` has ACTUALLY advanced
   // relative to `branch` -- avoids an unconditional /merges POST (write
-  // amplification) on every ensure call. `compareCommits(base=branch,
-  // head=fromBranch)` describes `fromBranch` relative to `branch`:
+  // amplification) on every ensure call. `comparison` (base=branch,
+  // head=fromBranch) describes `fromBranch` relative to `branch`:
   // 'ahead' = fromBranch has commits branch lacks (needs merge); 'diverged'
   // = both have unique commits (needs a real merge, may conflict);
   // 'behind' = fromBranch has nothing branch lacks; 'identical' = same
   // commit. Recomputed live on every call -- no cached/latched sha.
-  const comparison = await compareCommits(token, ref, branch, fromBranch);
-  if (comparison && (comparison.status === 'identical' || comparison.status === 'behind')) {
+  const existing = comparison.baseSha;
+  if (comparison.status === 'identical' || comparison.status === 'behind') {
     return { headSha: existing, syncState: 'up-to-date' };
   }
-  // comparison === null (unexpected 404) or status is 'ahead'/'diverged' --
-  // fall through to the merge attempt (safe default: prefer a real merge
-  // check over silently skipping a needed sync).
+  // status is 'ahead'/'diverged' -- fall through to the merge attempt.
 
   const mergeResult = await mergeBranches(token, ref, {
     base: branch,
