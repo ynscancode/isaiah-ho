@@ -120,13 +120,41 @@ export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSh
 
 export type CommitSummary = { sha: string; message: string; date: string };
 
+/** One editing session — a run of autosave commits collapsed into one
+ * version-history card (tech-lead-20260719T095958 Issue 3, Option A;
+ * grouping happens server-side in src/lib/history/sessionGrouping.ts /
+ * src/pages/api/draft/history.ts, this is purely the response shape). The
+ * session containing draft HEAD is `sessions[0]` (server preserves the
+ * commits' newest-first order, and session order follows member order).
+ * `commitCount === 1` sessions are a single real commit and should render
+ * as a plain non-expandable row (director-approved default,
+ * engineering-director-20260719T100312 #3). */
+export type HistorySession = {
+  /** Newest commit in the session — "Restore this version" target. */
+  latestSha: string;
+  /** ISO date of the oldest member (session start). */
+  startedAt: string;
+  /** ISO date of the newest member (session end). */
+  endedAt: string;
+  commitCount: number;
+  /** Distinct area badges across the session's members (collapsed-card
+   * badge text), newest-first-seen order. Cosmetic only — see
+   * sessionGrouping.ts; never used for any trust decision. */
+  areas: string[];
+  /** Members, newest-first. Each keeps its own sha/message/date so a
+   * per-edit "Restore this edit" can target any individual member via the
+   * SAME `revertDraft(sha)` below. */
+  commits: CommitSummary[];
+};
+
 /** GET /api/draft/history — session-gated, no CSRF (read-only). Returns the
- * last 30 commits on editor-draft, newest first, or null on failure (the
- * caller renders the error state, never a false-empty list). */
-export async function fetchHistory(): Promise<{ commits: CommitSummary[] } | null> {
+ * last 30 commits on editor-draft (newest first) grouped into sessions, or
+ * null on failure (the caller renders the error state, never a
+ * false-empty list). */
+export async function fetchHistory(): Promise<{ sessions: HistorySession[] } | null> {
   const res = await fetch('/api/draft/history');
   if (!res.ok) return null;
-  return parseJsonSafe<{ commits: CommitSummary[] }>(res);
+  return parseJsonSafe<{ sessions: HistorySession[] }>(res);
 }
 
 export type RevertResult =
@@ -255,7 +283,7 @@ export function setPath(obj: Record<string, unknown>, path: string, value: unkno
   cur[parts[parts.length - 1]] = value;
 }
 
-export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'retrying' | 'error';
 
 export function statusLabel(status: SaveStatus): string {
   switch (status) {
@@ -267,6 +295,12 @@ export function statusLabel(status: SaveStatus): string {
       return 'Saving…';
     case 'saved':
       return 'Saved to draft';
+    case 'retrying':
+      // tech-lead-20260718T174921 Design A3: a 503 github_unavailable (or a
+      // client-side network throw) is a TRANSIENT upstream blip, not a
+      // terminal failure — the banner must say so honestly rather than
+      // showing the same red "Save failed" state as a genuine error.
+      return "Can't reach GitHub — retrying…";
     case 'error':
       return 'Save failed';
     default:
@@ -322,8 +356,34 @@ export function makeAutosaver({
 }): Autosaver {
   const id = autosaverIdSeq++;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
   let pendingResave = false;
+
+  // tech-lead-20260718T174921 Design A3: transient upstream failures
+  // (503 github_unavailable from the server's retryable-GitHubApiError
+  // contract, or a client-side network throw) get one more automatic
+  // retry after a short delay, distinct from the debounce timer above —
+  // the user didn't make a new edit, so this must not depend on one.
+  // Server-side githubFetch has ALREADY exhausted its own bounded
+  // retry/backoff budget before returning 503, so this is a single
+  // lightweight follow-up, not a duplicate retry storm.
+  const RETRY_DELAY_MS = 4000;
+
+  function clearRetryTimer() {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+  }
+
+  function scheduleRetry() {
+    clearRetryTimer();
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      void runSave();
+    }, RETRY_DELAY_MS);
+  }
 
   function setStatus(next: SaveStatus, opts?: { silent?: boolean }) {
     if (next === 'idle' || next === 'saved') {
@@ -356,7 +416,14 @@ export function makeAutosaver({
     inFlight = false;
 
     if (result.ok) {
+      clearRetryTimer();
       setStatus('saved');
+    } else if (result.error === 'github_unavailable' || result.error === 'network_error') {
+      // TRANSIENT — never the terminal red "Save failed" state. Area stays
+      // dirty (setStatus('retrying') keeps it out of idle/saved), and a
+      // short automatic retry follows without waiting for another edit.
+      setStatus('retrying');
+      scheduleRetry();
     } else if (result.error === 'csrf_invalid') {
       // saveArea()/deleteBlogPost() already dispatched the EXISTING
       // editor:reauth-needed event (unchanged behavior) — EditorHarness
@@ -386,6 +453,7 @@ export function makeAutosaver({
 
   function schedule() {
     setStatus('dirty');
+    clearRetryTimer();
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
@@ -394,6 +462,7 @@ export function makeAutosaver({
   }
 
   async function flush(): Promise<void> {
+    clearRetryTimer();
     if (timer) {
       clearTimeout(timer);
       timer = undefined;

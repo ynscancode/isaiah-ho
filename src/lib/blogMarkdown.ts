@@ -64,7 +64,9 @@ export function parseBlogMarkdown(raw: string): BlogPostRaw | null {
 
   const fields: Record<string, unknown> = {};
   for (const line of frontmatterBlock.split('\n')) {
-    if (line.trim().length === 0) continue;
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    if (trimmed[0] === '#') continue; // skip full-line YAML comments (tech-lead-20260719T095958 Issue 1)
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) return null;
     const key = line.slice(0, colonIdx).trim();

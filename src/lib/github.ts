@@ -14,11 +14,56 @@ const GITHUB_API = 'https://api.github.com';
 
 export class GitHubApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  // tech-lead-20260718T174921 Design A1: true only for an exhausted-retry
+  // rate-limit(429/secondary-or-primary-403)/5xx/network failure — the
+  // client can safely offer "retry"/show a transient-unavailable banner.
+  // Defaults false so every pre-existing throw site (auth-403, 404, 422,
+  // 409, generic write failures) is unaffected without individually
+  // touching each call site.
+  retryable: boolean;
+  constructor(message: string, status: number, retryable: boolean = false) {
     super(message);
     this.name = 'GitHubApiError';
     this.status = status;
+    this.retryable = retryable;
   }
+}
+
+// ---- Retry/backoff (tech-lead-20260718T174921 Design A1) ----
+// Root cause: a transient 429 / secondary-rate-limit 403 / 5xx / network
+// blip from GitHub previously surfaced directly as a hard failure on every
+// autosave PUT and every read loader, even though these are frequently
+// transient and recoverable within a normal request lifetime. This adds a
+// small bounded retry loop with a strict, honest time budget so we fail
+// fast rather than silently hanging until the serverless function itself
+// times out.
+const MAX_ATTEMPTS = 3; // = 2 retries
+const BASE_DELAY_MS = 500;
+const BACKOFF_FACTOR = 2;
+const MAX_SINGLE_SLEEP_MS = 4000;
+const TOTAL_WAIT_BUDGET_MS = 5000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Full-jitter exponential backoff for our own retries (not a server-given
+ * Retry-After/reset). `retryIndex` is 1 for the delay before the 2nd
+ * attempt, 2 for the delay before the 3rd, etc. */
+function computeBackoffDelayMs(retryIndex: number): number {
+  const exp = BASE_DELAY_MS * Math.pow(BACKOFF_FACTOR, retryIndex - 1);
+  const capped = Math.min(exp, MAX_SINGLE_SLEEP_MS);
+  return Math.random() * capped;
+}
+
+// Lightweight per-request counter for latency re-measurement (tech-lead-
+// 20260719T095958 Issue 2 instrumentation). Purely additive — a module-level
+// increment + a single console.debug line, no added latency, no new failure
+// mode, never read/reset by any request-handling logic. Remove or leave in
+// place after re-measurement; it has no behavioral effect either way.
+let githubFetchRequestCount = 0;
+export function getGithubFetchRequestCount(): number {
+  return githubFetchRequestCount;
 }
 
 async function githubFetch(
@@ -26,17 +71,108 @@ async function githubFetch(
   path: string,
   init: RequestInit = {}
 ): Promise<Response> {
-  const res = await fetch(`${GITHUB_API}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init.headers,
-    },
-  });
-  return res;
+  githubFetchRequestCount++;
+  const method = (init.method ?? 'GET').toUpperCase();
+  const isIdempotent = method === 'GET';
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+    ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    ...init.headers,
+  };
+
+  let attempt = 0;
+  let waitedMs = 0;
+
+  // Attempts to sleep `delayMs`, honoring the total-wait budget. Returns
+  // true if it slept (caller should retry), false if it bailed (caller
+  // must throw immediately — never sleep-then-still-fail). Budget is
+  // checked against the FULL requested delay (e.g. a server-given
+  // Retry-After/reset), not the post-cap sleep duration — capping first
+  // would silently under-honor a large Retry-After (sleep less than
+  // requested, then retry too early) instead of bailing honestly. Only
+  // the actual sleep duration is capped at MAX_SINGLE_SLEEP_MS once the
+  // budget check has passed.
+  async function tryWait(delayMs: number): Promise<boolean> {
+    if (waitedMs + delayMs > TOTAL_WAIT_BUDGET_MS) return false;
+    const capped = Math.min(delayMs, MAX_SINGLE_SLEEP_MS);
+    await sleep(capped);
+    waitedMs += capped;
+    return true;
+  }
+
+  while (true) {
+    attempt++;
+    const attemptsLeft = attempt < MAX_ATTEMPTS;
+
+    let res: Response;
+    try {
+      res = await fetch(`${GITHUB_API}${path}`, { ...init, headers });
+    } catch (networkErr) {
+      // Network/fetch-throw. Only GET (idempotent) is safe to retry — a
+      // non-GET network error is ambiguous (the write may have applied on
+      // GitHub's side even though the client never saw the response), so a
+      // retry here risks a double-commit/duplicate-merge. Non-GET: throw
+      // immediately, not retryable.
+      if (!isIdempotent) {
+        throw new GitHubApiError(`Network error contacting GitHub: ${String(networkErr)}`, 0, false);
+      }
+      if (attemptsLeft) {
+        const delay = computeBackoffDelayMs(attempt);
+        if (await tryWait(delay)) continue;
+      }
+      throw new GitHubApiError(`Network error contacting GitHub: ${String(networkErr)}`, 0, true);
+    }
+
+    if (res.status === 429) {
+      // Always safe to retry on writes too — GitHub rejected the request
+      // before executing it.
+      const retryAfterHeader = res.headers.get('retry-after');
+      const delay = retryAfterHeader ? Number(retryAfterHeader) * 1000 : computeBackoffDelayMs(attempt);
+      if (attemptsLeft && (await tryWait(delay))) continue;
+      throw new GitHubApiError('GitHub rate limit exceeded (429)', 429, true);
+    }
+
+    if (res.status === 403) {
+      const retryAfterHeader = res.headers.get('retry-after');
+      const remaining = res.headers.get('x-ratelimit-remaining');
+      if (retryAfterHeader) {
+        // Secondary rate limit — safe to retry even on writes.
+        const delay = Number(retryAfterHeader) * 1000;
+        if (attemptsLeft && (await tryWait(delay))) continue;
+        throw new GitHubApiError('GitHub secondary rate limit exceeded (403)', 403, true);
+      }
+      if (remaining === '0') {
+        // Primary rate limit — wait until the reset epoch (seconds).
+        const resetHeader = res.headers.get('x-ratelimit-reset');
+        const resetEpochMs = resetHeader ? Number(resetHeader) * 1000 : Date.now();
+        const delay = Math.max(0, resetEpochMs - Date.now());
+        if (attemptsLeft && (await tryWait(delay))) continue;
+        throw new GitHubApiError('GitHub primary rate limit exceeded (403)', 403, true);
+      }
+      // Neither signal present -> auth/permission 403. Must NOT be
+      // retried (would mask a real permission failure as transient) -- let
+      // it surface immediately via the caller's existing !res.ok handling.
+      return res;
+    }
+
+    if (res.status >= 500 && res.status < 600) {
+      if (isIdempotent) {
+        if (attemptsLeft) {
+          const delay = computeBackoffDelayMs(attempt);
+          if (await tryWait(delay)) continue;
+        }
+        throw new GitHubApiError(`GitHub server error ${res.status}`, res.status, true);
+      }
+      // Non-GET 5xx is ambiguous (write may have applied) -- do not
+      // auto-retry; let the caller's existing !res.ok handling throw a
+      // non-retryable error.
+      return res;
+    }
+
+    return res;
+  }
 }
 
 // ---- OAuth user-token calls (login flow only) ----
@@ -123,9 +259,20 @@ export async function ensureDraftBranchSynced(
   branch: string,
   fromBranch: string
 ): Promise<{ headSha: string; syncState: DraftSyncState }> {
-  const existing = await getBranchHeadSha(token, ref, branch);
+  // Compare-first (tech-lead-20260719T095958 Issue 2 micro-opt): in the
+  // common steady state (branch already exists) `compareCommits(base=branch,
+  // head=fromBranch)` alone yields BOTH the branch's current head sha
+  // (`baseSha`) AND the ahead/behind status in a single GET, so the branch
+  // no longer needs its own separate getBranchHeadSha call up front. Only
+  // when compare 404s (branch ref doesn't exist yet) do we fall back to the
+  // original create path, which re-derives things via getBranchHeadSha as
+  // before. Zero behavior change: same sync decisions, same calls made on
+  // the create path, no caching, no force/reset (KB-0019), RC1 sync anchor
+  // (recomputed live every call) intact.
+  const comparison = await compareCommits(token, ref, branch, fromBranch);
 
-  if (!existing) {
+  if (!comparison) {
+    // branch ref not found (404) -- fall back to the create path.
     const baseSha = await getBranchHeadSha(token, ref, fromBranch);
     if (!baseSha) {
       throw new GitHubApiError(`Base branch ${fromBranch} not found`, 404);
@@ -142,6 +289,21 @@ export async function ensureDraftBranchSynced(
     if (!head) throw new GitHubApiError(`Branch ${branch} missing after create`, 500);
     return { headSha: head, syncState: 'created' };
   }
+
+  // A2 (tech-lead-20260718T174921 Design A2 / KB-0009): only merge
+  // `fromBranch` into `branch` when `fromBranch` has ACTUALLY advanced
+  // relative to `branch` -- avoids an unconditional /merges POST (write
+  // amplification) on every ensure call. `comparison` (base=branch,
+  // head=fromBranch) describes `fromBranch` relative to `branch`:
+  // 'ahead' = fromBranch has commits branch lacks (needs merge); 'diverged'
+  // = both have unique commits (needs a real merge, may conflict);
+  // 'behind' = fromBranch has nothing branch lacks; 'identical' = same
+  // commit. Recomputed live on every call -- no cached/latched sha.
+  const existing = comparison.baseSha;
+  if (comparison.status === 'identical' || comparison.status === 'behind') {
+    return { headSha: existing, syncState: 'up-to-date' };
+  }
+  // status is 'ahead'/'diverged' -- fall through to the merge attempt.
 
   const mergeResult = await mergeBranches(token, ref, {
     base: branch,

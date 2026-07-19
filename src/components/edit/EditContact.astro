@@ -43,6 +43,7 @@ const { contact, emptyStates } = Astro.props;
         <input class="editor-input contact-link-value" type="text"
           placeholder={link.type === 'email' ? 'name@example.com' : 'https://...'}
           value={link.value} data-link-field={`${link.id}.value`} />
+        <p class="contact-link-hint" data-link-hint={link.id} hidden>Finish the URL (or email) to save this link — it won't be lost, just held until it's complete.</p>
       </div>
     ))}
   </div>
@@ -67,6 +68,7 @@ const { contact, emptyStates } = Astro.props;
   import { makeAutosaver, saveArea, uniqueId } from '../../lib/editor/client';
   import type { ContactLink } from './EditContact.astro';
   import { unregister, wireField } from '../../lib/editor/history';
+  import { isPersistableContactValue } from '../../lib/contactValue';
 
   const AREA = 'contact';
   const ledeEl = document.querySelector<HTMLElement>('[data-editable="lede"][data-editable-area="contact"]');
@@ -77,10 +79,34 @@ const { contact, emptyStates } = Astro.props;
       .contactLinks;
     const working = new Map<string, ContactLink>(seedLinks.map((link) => [link.id, { ...link }]));
 
+    // tech-lead-20260718T174921 Design B: never TRANSMIT a not-yet-plausibly-
+    // complete link value. Tracks the last value the server actually
+    // accepted for each link, so an in-progress keystroke can be held back
+    // in the outgoing payload without losing the previously-saved value.
+    const lastPersistedValue = new Map<string, string>(seedLinks.map((link) => [link.id, link.value]));
+
+    function updateHint(id: string) {
+      const hintEl = list!.querySelector<HTMLElement>(`[data-link-hint="${id}"]`);
+      if (!hintEl) return;
+      const entry = working.get(id);
+      if (!entry) return;
+      const held = entry.value !== '' && !isPersistableContactValue(entry.type, entry.value);
+      hintEl.hidden = !held;
+    }
+
     const autosaver = makeAutosaver({
-      save: () => {
-        const payload = { lede: ledeEl!.textContent ?? '', links: Array.from(working.values()) };
-        return saveArea(AREA, payload);
+      save: async () => {
+        const payloadLinks = Array.from(working.values()).map((link) => {
+          const persistable = isPersistableContactValue(link.type, link.value);
+          const value = persistable ? link.value : (lastPersistedValue.get(link.id) ?? '');
+          return { ...link, value };
+        });
+        const payload = { lede: ledeEl!.textContent ?? '', links: payloadLinks };
+        const result = await saveArea(AREA, payload);
+        if (result.ok) {
+          for (const link of payloadLinks) lastPersistedValue.set(link.id, link.value);
+        }
+        return result;
       },
     });
 
@@ -127,6 +153,7 @@ const { contact, emptyStates } = Astro.props;
         if (valueEl) {
           valueEl.placeholder = entry.type === 'email' ? 'name@example.com' : 'https://...';
         }
+        if (target) updateHint(target.id);
         autosaver.schedule();
       }
 
@@ -146,8 +173,22 @@ const { contact, emptyStates } = Astro.props;
         if (!target) return;
         const entry = working.get(target.id);
         if (!entry) return;
+        const wasHeld = entry.value !== '' && !isPersistableContactValue(entry.type, entry.value);
         entry.value = valueEl.value;
-        autosaver.schedule();
+        updateHint(target.id);
+        const nowPersistable = isPersistableContactValue(entry.type, entry.value);
+        if (wasHeld && nowPersistable) {
+          // Transition from "incomplete, held" to "plausibly complete" —
+          // flush immediately rather than waiting out the debounce, so a
+          // just-finished URL/email saves promptly.
+          void autosaver.flush();
+        } else {
+          autosaver.schedule();
+        }
+      });
+
+      valueEl?.addEventListener('blur', () => {
+        void autosaver.flush();
       });
 
       // Item 5: per-field undo/redo for this row's controls. Structural
@@ -195,6 +236,7 @@ const { contact, emptyStates } = Astro.props;
             const target = fieldOf(valueEl);
             const entry = target && working.get(target.id);
             if (entry) entry.value = valueEl.value;
+            if (target) updateHint(target.id);
             autosaver.schedule();
           },
         });
@@ -206,6 +248,7 @@ const { contact, emptyStates } = Astro.props;
         if (!id) return;
         if (!window.confirm('Remove this contact link?')) return;
         working.delete(id);
+        lastPersistedValue.delete(id);
         row.remove();
         unregister(`contact:link:${id}.type`);
         unregister(`contact:link:${id}.label`);
@@ -221,6 +264,7 @@ const { contact, emptyStates } = Astro.props;
       const id = uniqueId();
       const newLink: ContactLink = { id, type: 'other', label: '', value: '' };
       working.set(id, newLink);
+      lastPersistedValue.set(id, '');
 
       const row = document.createElement('div');
       row.className = 'contact-link-row';
@@ -238,6 +282,7 @@ const { contact, emptyStates } = Astro.props;
         <input class="editor-input contact-link-label" type="text" placeholder="e.g. Twitter, Calendly" value="" data-link-field="${id}.label" />
         <label class="editor-field-label mono">Value</label>
         <input class="editor-input contact-link-value" type="text" placeholder="https://..." value="" data-link-field="${id}.value" />
+        <p class="contact-link-hint" data-link-hint="${id}" hidden>Finish the URL (or email) to save this link — it won't be lost, just held until it's complete.</p>
       `;
       list.appendChild(row);
       wireRow(row);
@@ -322,6 +367,12 @@ const { contact, emptyStates } = Astro.props;
   .contact-link-row .editor-input { max-width: none; width: 100%; }
   .contact-link-row .editor-input:disabled { opacity: 0.45; cursor: not-allowed; }
   .contact-link-remove { position: absolute; top: 0.75rem; right: 0.75rem; }
+  .contact-link-hint {
+    grid-column: 1 / -1;
+    margin: -0.3rem 0 0;
+    font-size: 0.72rem;
+    color: var(--signal-text, #c87f0a);
+  }
 
   @media (max-width: 640px) {
     .contact-link-row { grid-template-columns: 1fr; padding-top: 2.75rem; }

@@ -19,7 +19,7 @@ import Band from '../Band.astro';
 
 <script>
   import { fetchHistory, revertDraft } from '../../lib/editor/client';
-  import type { CommitSummary } from '../../lib/editor/client';
+  import type { CommitSummary, HistorySession } from '../../lib/editor/client';
 
   const SITE_JSON_AREAS = new Set(['home', 'about', 'contact', 'emptyStates']);
 
@@ -69,6 +69,68 @@ import Band from '../Band.astro';
     }
   }
 
+  // Human-readable area names for the collapsed-card single-line summary
+  // (ui-ux-designer-20260719T104512 §1). Cosmetic only — never used for any
+  // trust/security decision; the sha sent to revertDraft is derived
+  // independently (see handleRestore call sites).
+  const AREA_LABELS: Record<string, string> = {
+    home: 'Home',
+    about: 'About',
+    contact: 'Contact',
+    emptyStates: 'Empty states',
+    site: 'Site content',
+    projects: 'Projects',
+    experience: 'Experience',
+    blog: 'Blog',
+    sync: 'Sync',
+  };
+  const GENERIC_AREA_LABEL = 'content';
+  function friendlyArea(code: string): string {
+    return AREA_LABELS[code] ?? GENERIC_AREA_LABEL;
+  }
+
+  /** Single-line summary for a single-commit "session" (today's plain row) —
+   * derived from the already-parsed commit, never the raw message (that raw
+   * fallback was the overflow bug). ui-ux-designer-20260719T104512 §1(c)/(d). */
+  function summarizeCommit(parsed: ParsedCommit, rawMessage: string): string {
+    switch (parsed.kind) {
+      case 'update-site':
+      case 'update-isolated':
+        return `Edited ${friendlyArea(parsed.area)}`;
+      case 'update-blog':
+        return 'Edited Blog';
+      case 'delete-blog':
+        return 'Deleted blog post';
+      case 'other':
+        if (/^Sync master into editor-draft$/.test(rawMessage.split('\n')[0].trim())) {
+          return 'Synced from live site';
+        }
+        return 'Edited content';
+    }
+  }
+
+  /** Single-line summary for a collapsed multi-commit session card, built
+   * from `session.areas` (already distinct, newest-first) mapped through
+   * `friendlyArea` and re-deduped. ui-ux-designer-20260719T104512 §1(a)/(b). */
+  function summarizeSession(session: HistorySession): string {
+    const names: string[] = [];
+    session.areas.forEach((code) => {
+      const label = friendlyArea(code);
+      if (!names.includes(label)) names.push(label);
+    });
+    if (names.length <= 1) {
+      return `Edited ${names[0] ?? GENERIC_AREA_LABEL}`;
+    }
+    if (names.length === 2) {
+      return `Edited ${names[0]} & ${names[1]}`;
+    }
+    if (names.length === 3) {
+      return `Edited ${names[0]}, ${names[1]} & ${names[2]}`;
+    }
+    const more = names.length - 2;
+    return `Edited ${names[0]}, ${names[1]} & ${more} more`;
+  }
+
   function confirmCopy(parsed: ParsedCommit, timestamp: string): string {
     switch (parsed.kind) {
       case 'update-site':
@@ -89,12 +151,32 @@ import Band from '../Band.astro';
     const diffSec = Math.round(diffMs / 1000);
     if (diffSec < 60) return 'Just now';
     const diffMin = Math.round(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
     const diffHr = Math.round(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? '' : 's'} ago`;
     const diffDay = Math.round(diffHr / 24);
-    if (diffDay < 30) return `${diffDay}d ago`;
+    if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
     return date.toLocaleDateString();
+  }
+
+  /** Locked absolute timestamp format (engineering-director-20260719T103859):
+   * built from LOCAL Date parts via toLocaleString/Intl options — NEVER
+   * toISOString()/UTC slicing (KB-0003). */
+  function formatAbsolute(date: Date): string {
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+
+  /** Locked combined timestamp label: "{absolute} · {relative}", e.g.
+   * "Jul 19, 2026, 6:24 PM · 2 hours ago" (engineering-director
+   * -20260719T103859, ui-ux-designer-20260719T104512 §2). */
+  function formatTimeLabel(date: Date): string {
+    return `${formatAbsolute(date)} · ${formatRelative(date)}`;
   }
 
   const statusEl = document.getElementById('history-status');
@@ -123,7 +205,37 @@ import Band from '../Band.astro';
     });
   }
 
-  function renderRow(commit: CommitSummary, isHead: boolean): HTMLLIElement {
+  /** Session-level restore confirm copy (tech-lead-20260719T095958 Issue 3 —
+   * "Restore this version" targets the session's FINAL commit, `latestSha`).
+   * Reuses the same per-kind area wording as `confirmCopy` but makes clear
+   * this rolls forward the whole session, not just its last edit. */
+  function sessionConfirmCopy(parsed: ParsedCommit, timestamp: string, commitCount: number): string {
+    const sessionNote = ` This version included ${commitCount} autosaved edits — restoring rolls everything in it forward to its final saved state as of ${timestamp}, not just the last change.`;
+    switch (parsed.kind) {
+      case 'update-site':
+        return `Restore this version, dated ${timestamp}? Because home, about, contact, and the empty-state messages are all saved together, this will roll ALL FOUR back to that same moment — not just "${parsed.area}".${sessionNote} This creates a new save; it doesn't lose history and can be reverted again.`;
+      case 'update-isolated':
+        return `Restore this version of "${parsed.area}", dated ${timestamp}?${sessionNote} This creates a new save; it doesn't lose history and can be reverted again.`;
+      case 'update-blog':
+        return `Restore this version of "${parsed.slug}", dated ${timestamp}?${sessionNote} This creates a new save; it doesn't lose history and can be reverted again.`;
+      case 'delete-blog':
+        return `Un-delete "${parsed.slug}" and restore this version, dated ${timestamp}?${sessionNote} This creates a new save; it doesn't lose history and can be reverted again.`;
+      default:
+        return `Restore this version, dated ${timestamp}?${sessionNote} This creates a new save; it doesn't lose history and can be reverted again.`;
+    }
+  }
+
+  /** Renders one member commit — used both for a single-commit session's
+   * plain row (restoreLabel: 'Restore this version', identical to today's
+   * flat-list row) and for a member inside an expanded multi-commit session
+   * (restoreLabel: 'Restore this edit'). The very newest commit overall
+   * (`isHead`) always shows "Current" and no restore button. */
+  function renderMemberRow(
+    commit: CommitSummary,
+    isHead: boolean,
+    restoreLabel: 'Restore this version' | 'Restore this edit',
+    displayText: string = commit.message.split('\n')[0].trim()
+  ): HTMLLIElement {
     const parsed = parseCommit(commit.message);
     const date = new Date(commit.date);
     const li = document.createElement('li');
@@ -136,13 +248,13 @@ import Band from '../Band.astro';
 
     const msg = document.createElement('span');
     msg.className = 'history-row-message';
-    msg.textContent = commit.message.split('\n')[0].trim();
+    msg.textContent = displayText;
     li.appendChild(msg);
 
-    const time = document.createElement('span');
+    const time = document.createElement('time');
     time.className = 'history-row-time';
-    time.title = date.toLocaleString();
-    time.textContent = formatRelative(date);
+    time.setAttribute('datetime', commit.date);
+    time.textContent = formatTimeLabel(date);
     li.appendChild(time);
 
     if (isHead) {
@@ -154,14 +266,14 @@ import Band from '../Band.astro';
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'editor-btn';
-      btn.textContent = 'Restore this version';
+      btn.textContent = restoreLabel;
       btn.setAttribute('data-restore-sha', commit.sha);
       btn.setAttribute(
         'aria-label',
-        `Restore version: ${commit.message}, ${formatRelative(date)}`
+        `${restoreLabel}: ${commit.message}, ${formatRelative(date)}`
       );
       btn.addEventListener('click', () => {
-        void handleRestore(commit, parsed, date, btn);
+        void handleRestore(commit.sha, confirmCopy(parsed, date.toLocaleString()), btn);
       });
       li.appendChild(btn);
     }
@@ -169,13 +281,121 @@ import Band from '../Band.astro';
     return li;
   }
 
-  async function handleRestore(
-    commit: CommitSummary,
-    parsed: ParsedCommit,
-    date: Date,
-    btn: HTMLButtonElement
-  ) {
-    const confirmed = window.confirm(confirmCopy(parsed, date.toLocaleString()));
+  /** Renders a collapsed, expandable session card for a multi-commit
+   * session. Disclosure toggle is a real <button> with aria-expanded /
+   * aria-controls (keyboard-operable). Expanding reveals member commits
+   * newest-first via renderMemberRow. The card-level "Restore this version"
+   * button always targets `session.latestSha` (director decision #2). */
+  function renderSessionCard(session: HistorySession, isCurrentSession: boolean): HTMLLIElement {
+    const li = document.createElement('li');
+    li.className = isCurrentSession ? 'history-session history-session--current' : 'history-session';
+
+    const summary = document.createElement('div');
+    summary.className = 'history-session-summary';
+
+    const membersId = `history-session-members-${session.latestSha}`;
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'history-session-toggle';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', membersId);
+
+    const summaryText = summarizeSession(session);
+
+    const summaryTextEl = document.createElement('span');
+    summaryTextEl.className = 'history-session-summary-text';
+    summaryTextEl.textContent = summaryText;
+    toggle.appendChild(summaryTextEl);
+
+    const endedDate = new Date(session.endedAt);
+    const time = document.createElement('time');
+    time.className = 'history-row-time';
+    time.setAttribute('datetime', session.endedAt);
+    time.textContent = formatTimeLabel(endedDate);
+    toggle.appendChild(time);
+
+    const countLabel = document.createElement('span');
+    countLabel.className = 'history-session-count';
+    countLabel.textContent = `${session.commitCount} edits`;
+    toggle.appendChild(countLabel);
+
+    if (isCurrentSession) {
+      const current = document.createElement('span');
+      current.className = 'history-row-current-label mono';
+      current.textContent = 'Current';
+      toggle.appendChild(current);
+    }
+
+    const chevron = document.createElement('span');
+    chevron.className = 'history-session-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '▾';
+    toggle.appendChild(chevron);
+
+    toggle.setAttribute(
+      'aria-label',
+      `${summaryText}, ${formatTimeLabel(endedDate)}, ${session.commitCount} edits. Expand to see individual edits.`
+    );
+
+    summary.appendChild(toggle);
+
+    const latest = session.commits[0];
+    const parsedLatest = parseCommit(latest.message);
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.type = 'button';
+    restoreBtn.className = 'editor-btn';
+    restoreBtn.textContent = 'Restore this version';
+    restoreBtn.setAttribute('data-restore-sha', session.latestSha);
+    restoreBtn.setAttribute(
+      'aria-label',
+      `Restore this version: ${summaryText}, ${formatTimeLabel(endedDate)}`
+    );
+    restoreBtn.addEventListener('click', () => {
+      void handleRestore(
+        session.latestSha,
+        sessionConfirmCopy(parsedLatest, endedDate.toLocaleString(), session.commitCount),
+        restoreBtn
+      );
+    });
+    summary.appendChild(restoreBtn);
+
+    li.appendChild(summary);
+
+    const membersList = document.createElement('ul');
+    membersList.id = membersId;
+    membersList.className = 'history-session-members';
+    membersList.hidden = true;
+    session.commits.forEach((commit, idx) => {
+      const isHeadCommit = isCurrentSession && idx === 0;
+      membersList.appendChild(renderMemberRow(commit, isHeadCommit, 'Restore this edit'));
+    });
+    li.appendChild(membersList);
+
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+      membersList.hidden = expanded;
+    });
+
+    return li;
+  }
+
+  function renderSession(session: HistorySession, isCurrentSession: boolean): HTMLLIElement {
+    if (session.commitCount <= 1) {
+      // Single-commit session: plain non-expandable row (director decision
+      // #3), now with the same short summary + locked timestamp treatment
+      // as a session card (ui-ux-designer-20260719T104512 §4).
+      const commit = session.commits[0];
+      const displayText = summarizeCommit(parseCommit(commit.message), commit.message);
+      return renderMemberRow(session.commits[0], isCurrentSession, 'Restore this version', displayText);
+    }
+    return renderSessionCard(session, isCurrentSession);
+  }
+
+  async function handleRestore(targetSha: string, confirmMessage: string, btn: HTMLButtonElement) {
+    const confirmed = window.confirm(confirmMessage);
     if (!confirmed) return;
 
     setRestoreButtonsDisabled(true);
@@ -183,7 +403,7 @@ import Band from '../Band.astro';
     btn.textContent = 'Restoring…';
     setStatus('Restoring…');
 
-    const result = await revertDraft(commit.sha);
+    const result = await revertDraft(targetSha);
 
     if (result.ok) {
       setStatus('Restored. Reload to see the update everywhere in the editor.');
@@ -225,16 +445,16 @@ import Band from '../Band.astro';
       return;
     }
 
-    const commits = result.commits ?? [];
-    if (commits.length === 0) {
+    const sessions = result.sessions ?? [];
+    if (sessions.length === 0) {
       emptyEl?.removeAttribute('hidden');
       return;
     }
 
     if (listEl) {
       listEl.innerHTML = '';
-      commits.forEach((commit, index) => {
-        listEl.appendChild(renderRow(commit, index === 0));
+      sessions.forEach((session, index) => {
+        listEl.appendChild(renderSession(session, index === 0));
       });
       listEl.removeAttribute('hidden');
     }
@@ -295,7 +515,10 @@ import Band from '../Band.astro';
   }
   .history-row-message {
     flex: 1 1 auto;
-    min-width: 180px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-family: "IBM Plex Mono", monospace;
     font-size: 0.85rem;
   }
@@ -321,5 +544,81 @@ import Band from '../Band.astro';
     font-size: 0.75rem;
     color: var(--signal, #c87f0a);
     opacity: 0.9;
+  }
+
+  .history-session {
+    border: 1px solid #3a4468;
+    border-radius: 4px;
+    background: rgba(245, 243, 238, 0.04);
+    overflow: hidden;
+  }
+  .history-session--current {
+    border-color: var(--signal, #c87f0a);
+  }
+  .history-session-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.85rem 1rem;
+  }
+  .history-session-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
+    min-width: 220px;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .history-session-toggle:focus-visible {
+    outline: 2px solid var(--signal, #c87f0a);
+    outline-offset: 2px;
+  }
+  .history-session-summary-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+  }
+  .history-session-count {
+    flex: 0 0 auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+  .history-session-chevron {
+    flex: 0 0 auto;
+    margin-left: auto;
+    transition: transform 0.15s ease;
+  }
+  .history-session-toggle[aria-expanded="true"] .history-session-chevron {
+    transform: rotate(-180deg);
+  }
+  .history-session-members {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    list-style: none;
+    margin: 0;
+    padding: 0.75rem 1rem 1rem;
+    border-top: 1px solid #3a4468;
+  }
+  .history-session-members[hidden] {
+    display: none;
+  }
+  .history-session-members .history-row {
+    background: rgba(245, 243, 238, 0.02);
   }
 </style>
