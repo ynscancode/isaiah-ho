@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { ensureDraftBranchSynced } from '../../../lib/github';
+import { ensureDraftBranchSynced, GitHubApiError } from '../../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, buildPreviewUrl, MASTER_BRANCH } from '../../../lib/gitConfig';
 
 export const prerender = false;
@@ -23,6 +23,16 @@ export const POST: APIRoute = async () => {
     );
   } catch (err) {
     console.error('draft/ensure failed', err);
+    // tech-lead-20260718T174921 Design A3: distinguish a transient/
+    // rate-limited upstream failure (retryable) from a genuine server bug --
+    // gives the client an honest "try again" signal instead of a generic
+    // write-failed banner.
+    if (err instanceof GitHubApiError && err.retryable) {
+      return new Response(JSON.stringify({ error: 'github_unavailable', action: 'retry' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({ error: 'draft_ensure_failed' }), {
       status: 502,
       headers: { 'content-type': 'application/json' },

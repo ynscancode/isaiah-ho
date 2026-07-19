@@ -1,5 +1,6 @@
 import { z } from 'astro:content';
 import { ABOUT_IMAGE_PUBLIC_PATH_RE } from './contentPaths';
+import { isPersistableContactValue } from './contactValue';
 
 // Server-side validation for every git-write body (validate at the boundary —
 // this IS the boundary: an authenticated-but-still-untrusted-payload write).
@@ -90,10 +91,11 @@ export const contactLinkSchema = z
       });
     }
     if (data.value.length > 0) {
-      const isValid =
-        data.type === 'email'
-          ? /^[^\s:]+@[^\s:]+$/.test(data.value)
-          : /^https?:\/\//i.test(data.value);
+      // tech-lead-20260718T174921 Design B: delegates to the shared
+      // predicate (src/lib/contactValue.ts) so the client's "don't
+      // transmit an in-progress value" gate and this hard-reject rule can
+      // never drift apart. Behavior-preserving: same regexes as before.
+      const isValid = isPersistableContactValue(data.type, data.value);
       if (!isValid) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

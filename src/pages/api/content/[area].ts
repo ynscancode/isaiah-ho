@@ -3,6 +3,7 @@ import {
   getFileOnBranch,
   putFileOnBranch,
   deleteFileOnBranch,
+  GitHubApiError,
 } from '../../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, COMMIT_AUTHOR } from '../../../lib/gitConfig';
 import {
@@ -221,6 +222,13 @@ export const POST: APIRoute = async ({ params, request }) => {
     });
   } catch (err) {
     console.error(`content/${area} write failed`, err);
+    // tech-lead-20260718T174921 Design A3: see draft/ensure.ts.
+    if (err instanceof GitHubApiError && err.retryable) {
+      return new Response(JSON.stringify({ error: 'github_unavailable', action: 'retry' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({ error: 'write_failed' }), {
       status: 502,
       headers: { 'content-type': 'application/json' },
@@ -278,6 +286,13 @@ export const DELETE: APIRoute = async ({ params, request }) => {
     });
   } catch (err) {
     console.error('content/blog delete failed', err);
+    // tech-lead-20260718T174921 Design A3: see draft/ensure.ts.
+    if (err instanceof GitHubApiError && err.retryable) {
+      return new Response(JSON.stringify({ error: 'github_unavailable', action: 'retry' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({ error: 'delete_failed' }), {
       status: 502,
       headers: { 'content-type': 'application/json' },

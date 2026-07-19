@@ -15,9 +15,6 @@ const links = [
   { href: `${basePath}/projects`, label: 'Projects' },
   { href: `${basePath}/blog`, label: 'Blog' },
   { href: `${basePath}/contact`, label: 'Contact' },
-  // Editor-only nav entry (ui-ux-designer-20260718T103000) — never appended
-  // for the public site, so /edit/history has zero public-nav trace (ARCH-0005).
-  ...(isEdit ? [{ href: '/edit/history', label: 'History' }] : []),
 ];
 
 const isActive = (href: string) =>

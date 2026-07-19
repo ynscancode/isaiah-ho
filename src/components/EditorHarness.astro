@@ -33,6 +33,7 @@ const { contentSource } = Astro.props;
     <button type="button" id="editor-undo-btn" class="editor-btn" disabled>Undo</button>
     <button type="button" id="editor-redo-btn" class="editor-btn" disabled>Redo</button>
     <button type="button" id="editor-preview-btn" class="editor-btn">Preview</button>
+    <a href="/edit/history" id="editor-history-btn" class="editor-btn">History</a>
     <button type="button" id="editor-publish-btn" class="editor-btn editor-btn-publish">Publish</button>
     <button type="button" id="editor-logout-btn" class="editor-btn editor-btn-ghost">Log out</button>
   </div>
@@ -84,6 +85,12 @@ const { contentSource } = Astro.props;
   #editor-status-text[data-status="saved"] {
     color: #7fd6a0;
   }
+  #editor-status-text[data-status="retrying"] {
+    /* Transient upstream blip (Design A3) — same "still pending, not lost"
+       family as dirty/saving, deliberately NOT the red error color so it
+       reads as accurate rather than alarming. */
+    color: #f0c987;
+  }
   #editor-status-text[data-status="error"] {
     color: #ff9c9c;
   }
@@ -103,6 +110,12 @@ const { contentSource } = Astro.props;
     background: transparent;
     color: var(--paper, #f5f3ee);
     cursor: pointer;
+    /* .editor-btn is also used on the History <a> (ui-ux-designer-
+       20260719T010000 point 2) — Nav.astro's own `a { text-decoration:
+       none }` is scoped and does NOT cascade into this global stylesheet,
+       so set it explicitly here rather than relying on any button default. */
+    text-decoration: none;
+    display: inline-block;
   }
 
   .editor-btn:hover {

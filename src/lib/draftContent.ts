@@ -117,12 +117,19 @@ function toBlogPostRaw(slug: string, raw: string): BlogPostRaw | null {
  * build-time snapshot) is the closest fit to Decision 2e's "surfaced as an
  * error, never a partial object" within this function's list-shaped return
  * type. */
+// tech-lead-20260718T174921 Design C: discriminated result instead of
+// `{posts}|null` so the caller can tell "confirmed zero posts" (a genuine
+// 404 on the directory) apart from "this branch's read failed" (caller
+// must fall through to the next tier, never render an authoritative empty
+// list on a read it couldn't actually complete — KB-0020).
+type ListBlogPostsResult = { status: 'listed'; posts: BlogPostRaw[] } | { status: 'empty' };
+
 async function listBlogPostsOnBranch(
   ctx: Ctx,
   branch: string
-): Promise<{ posts: BlogPostRaw[] } | null> {
+): Promise<ListBlogPostsResult> {
   const listing = await listDirectoryOnBranch(ctx.token, ctx.ref, BLOG_DIR, branch);
-  if (listing === null) return null; // 404 on the directory = zero posts, not an error (Decision 2d).
+  if (listing === null) return { status: 'empty' }; // 404 on the directory = zero posts, not an error (Decision 2d).
 
   const mdEntries = listing.filter((e) => e.type === 'file' && e.name.endsWith('.md'));
   const posts = await Promise.all(
@@ -135,30 +142,37 @@ async function listBlogPostsOnBranch(
       return post;
     })
   );
-  return { posts };
+  return { status: 'listed', posts };
 }
 
 export async function loadBlogList(): Promise<Loaded<BlogPostRaw[]>> {
   const ctx = getCtx();
 
-  // Draft attempt. A 404 on the directory listing means zero posts on the
-  // draft — render an EMPTY list, never fall back to master (Decision 2d:
-  // today's draft deliberately has zero blog posts; falling back would
-  // resurrect posts the user deleted).
+  // Draft attempt. A CONFIRMED 404 on the directory listing means zero
+  // posts on the draft — render an EMPTY list, never fall back to master
+  // (Decision 2d: today's draft deliberately has zero blog posts; falling
+  // back would resurrect posts the user deleted). A THROW means the read
+  // itself failed (rate limit / network / parse failure) — that is NOT
+  // evidence of zero posts, so fall through to the master tier instead
+  // (tech-lead-20260718T174921 Design C / KB-0020).
   try {
     const draftResult = await listBlogPostsOnBranch(ctx, ctx.draftBranch);
-    if (draftResult === null) return { data: [], source: 'draft' };
+    if (draftResult.status === 'empty') return { data: [], source: 'draft' };
     return { data: draftResult.posts, source: 'draft' };
   } catch (err) {
     console.error('loadBlogList: draft branch read failed, falling back to master', err);
   }
 
   // Master attempt — only reached because the draft listing itself threw
-  // (GitHub error or a parse failure), never because of a clean 404.
+  // (GitHub error or a parse failure), never because of a clean 404. A
+  // master-tier 'empty' or throw here proves NOTHING about the draft (the
+  // draft was never confirmed), so it must NOT render as an authoritative
+  // "0 posts" — fall through to the build-time snapshot instead, which
+  // surfaces the "can't reach GitHub" banner (source==='build').
   try {
     const masterResult = await listBlogPostsOnBranch(ctx, MASTER_BRANCH);
-    if (masterResult === null) return { data: [], source: 'master' };
-    return { data: masterResult.posts, source: 'master' };
+    if (masterResult.status === 'listed') return { data: masterResult.posts, source: 'master' };
+    // status === 'empty': do NOT return here — fall through to build.
   } catch (err) {
     console.error('loadBlogList: master branch read failed, falling back to build-time content', err);
   }
