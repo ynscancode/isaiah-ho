@@ -1,0 +1,148 @@
+---
+/**
+ * Synthesis motif — converging streams + breathing node. Static stream
+ * paths/node are ported verbatim from the hero-graphic-options.html source
+ * artifact (lines 176-183). The trail circles (source's runtime `comet()`
+ * function, lines 237-259) are reproduced HERE, DETERMINISTICALLY, at BUILD
+ * TIME via this .map() — same `streams` params, same tail-first loop order,
+ * same per-point formula and rounding — so the emitted static SVG markup is
+ * byte-equivalent to what the source's runtime script would have generated.
+ * There is NO runtime <script> for this component.
+ */
+
+type StreamParams = {
+  d: string;
+  dur: number;
+  delay: number;
+};
+
+// Verbatim from the source artifact's `streams` array (lines 289-295).
+const streams: StreamParams[] = [
+  { d: 'M0,60 C150,60 230,200 360,200', dur: 4.2, delay: -0.4 },
+  { d: 'M0,120 C150,120 230,200 360,200', dur: 4.0, delay: -2.0 },
+  { d: 'M0,200 C150,200 230,200 360,200', dur: 4.4, delay: -1.2 },
+  { d: 'M0,280 C150,280 230,200 360,200', dur: 4.1, delay: -3.1 },
+  { d: 'M0,340 C150,340 230,200 360,200', dur: 3.9, delay: -2.4 },
+];
+
+// comet() constants for synthesis. HALO_R adds the soft amber glow that
+// makes the orbit motif's trail read better than the original bare-dot
+// synthesis trail; COUNT bumped 16 -> 18 to match orbit's density.
+const COUNT = 18;
+const STEP = 0.035;
+const HEAD_R = 4;
+const HALO_R = 8;
+
+type TrailCircle = {
+  r: string;
+  opacity: string;
+  color: string;
+  animationDelay: string;
+};
+
+function buildTrail(dur: number, delay: number): TrailCircle[] {
+  const circles: TrailCircle[] = [];
+  // Tail first (faint, small), head last (bright, big) so the head paints on top.
+  for (let i = COUNT - 1; i >= 0; i--) {
+    const t = i / (COUNT - 1);
+    const r = (HEAD_R * (1 - 0.72 * t)).toFixed(2);
+    const op = Math.pow(1 - t, 1.35).toFixed(3);
+    const col = t < 0.22 ? '#f4cd77' : t < 0.55 ? '#e0a94a' : '#c87f0a';
+    circles.push({
+      r,
+      opacity: op,
+      color: col,
+      animationDelay: `${delay + i * STEP}s`,
+    });
+  }
+  return circles;
+}
+
+const streamTrails = streams.map((s) => ({
+  ...s,
+  circles: buildTrail(s.dur, s.delay),
+}));
+---
+
+<svg viewBox="0 0 400 400" role="img" aria-label="Muted streams with fading amber lights converging to a point that breathes">
+  <g fill="none" stroke="#34406b" stroke-width="1.6" stroke-linecap="round">
+    <path d="M0,60 C150,60 230,200 360,200"></path>
+    <path d="M0,120 C150,120 230,200 360,200"></path>
+    <path d="M0,200 C150,200 230,200 360,200"></path>
+    <path d="M0,280 C150,280 230,200 360,200"></path>
+    <path d="M0,340 C150,340 230,200 360,200"></path>
+  </g>
+  <g id="syn-trails">
+    {streamTrails.map((s) => (
+      <g style={`animation:streamfade ${s.dur}s linear infinite; animation-delay:${s.delay}s`}>
+        <circle
+          class="trail-head"
+          cx="0"
+          cy="0"
+          r={HALO_R}
+          fill="rgba(200,127,10,0.16)"
+          style={`offset-path:path('${s.d}'); animation-duration:${s.dur}s; animation-delay:${s.delay}s`}
+        ></circle>
+        {s.circles.map((c) => (
+          <circle
+            class="trail-head"
+            cx="0"
+            cy="0"
+            r={c.r}
+            fill={c.color}
+            opacity={c.opacity}
+            style={`offset-path:path('${s.d}'); animation-duration:${s.dur}s; animation-delay:${c.animationDelay}`}
+          ></circle>
+        ))}
+      </g>
+    ))}
+  </g>
+  <circle class="node-halo" cx="360" cy="200" r="15" fill="rgba(200,127,10,0.22)"></circle>
+  <circle cx="360" cy="200" r="6" fill="#c87f0a"></circle>
+</svg>
+
+<style>
+  @keyframes headmove {
+    from { offset-distance: 0%; }
+    to { offset-distance: 100%; }
+  }
+  @keyframes streamfade {
+    0% { opacity: 0; }
+    14% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .trail-head {
+    offset-rotate: 0deg;
+    animation-name: headmove;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+
+  @keyframes node-pulse {
+    0%, 100% { opacity: 0.45; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(1.18); }
+  }
+  .node-halo {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: node-pulse 2.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trail-head {
+      animation: none;
+      offset-distance: 50%;
+    }
+    #syn-trails g {
+      /* Stream <g> wrappers carry an inline `animation:streamfade ...`
+         (set at build time above) — inline style specificity requires
+         !important here to actually disable it under reduced motion. */
+      animation: none !important;
+    }
+    .node-halo {
+      animation: none;
+      opacity: 0.45;
+    }
+  }
+</style>

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { mergeBranches, deleteBranch } from '../../lib/github';
+import { mergeBranches, deleteBranch, ensureDraftBranchSynced } from '../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, MASTER_BRANCH } from '../../lib/gitConfig';
 
 export const prerender = false;
@@ -38,6 +38,25 @@ export const POST: APIRoute = async () => {
       await deleteBranch(token, ref, branch);
     } catch (err) {
       console.error('publish: post-publish draft branch delete failed (non-fatal)', err);
+    }
+
+    // Immediately recreate the draft from master (tech-lead-20260719T153953
+    // Fix 3a). Without this, the draft sits absent from the moment of
+    // publish until the next save's lazy `ensureDraft()` call — during that
+    // window `/api/draft/history` reads a 404'd branch (empty) and
+    // `/api/draft/revert` resolves a null draftHead (`unreachable_sha`),
+    // i.e. "publish resets history." Same helper the next save would call
+    // anyway (create path: branch missing -> recreate from MASTER_BRANCH
+    // HEAD), just invoked eagerly here instead of lazily. Best-effort/
+    // non-fatal, mirroring the delete above: publish already succeeded
+    // (commit exists on master), so a failure here must not turn a
+    // successful publish into a failed response — the next save's lazy
+    // ensure remains the backstop if this also fails. No force/reset/
+    // rewrite (KB-0019); fixed server refs only, no caller-supplied ref.
+    try {
+      await ensureDraftBranchSynced(token, ref, branch, MASTER_BRANCH);
+    } catch (err) {
+      console.error('publish: post-publish draft branch re-ensure failed (non-fatal)', err);
     }
 
     return new Response(JSON.stringify({ commitSha: result.sha }), {

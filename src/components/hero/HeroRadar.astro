@@ -1,0 +1,95 @@
+---
+/**
+ * Radar sweep motif — pure CSS animation, no runtime JS.
+ * Ported verbatim from the hero-graphic-options.html source artifact
+ * (radar `.sweep`/`.blip`/`.blip-halo`, lines 92-122).
+ */
+---
+
+<svg viewBox="0 0 400 400" role="img" aria-label="Radar beam; contacts glow and fade as the beam leaves them">
+  <defs>
+    <linearGradient id="sweepgrad" x1="385" y1="200" x2="306" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="rgba(224,169,74,0.32)"></stop>
+      <stop offset="1" stop-color="rgba(224,169,74,0)"></stop>
+    </linearGradient>
+  </defs>
+  <line x1="200" y1="18" x2="200" y2="382" stroke="#26304d" stroke-width="1"></line>
+  <line x1="18" y1="200" x2="382" y2="200" stroke="#26304d" stroke-width="1"></line>
+  <g fill="none" stroke="#34406b" stroke-width="1.25">
+    <circle cx="200" cy="200" r="45"></circle>
+    <circle cx="200" cy="200" r="95"></circle>
+    <circle cx="200" cy="200" r="145"></circle>
+    <circle cx="200" cy="200" r="185"></circle>
+  </g>
+  <g class="sweep">
+    <path d="M200,200 L385,200 A185,185 0 0 0 306,48 Z" fill="url(#sweepgrad)"></path>
+    <line x1="200" y1="200" x2="385" y2="200" stroke="#e0a94a" stroke-width="2"></line>
+  </g>
+  <g>
+    <circle class="blip-halo" cx="242" cy="215" r="10" fill="rgba(224,169,74,0.5)" style="animation-delay:0.383s"></circle>
+    <circle class="blip" cx="242" cy="215" r="4.5" fill="#e0a94a" style="animation-delay:0.383s"></circle>
+    <circle class="blip-halo" cx="168" cy="300" r="10" fill="rgba(224,169,74,0.5)" style="animation-delay:2.094s"></circle>
+    <circle class="blip" cx="168" cy="300" r="4.5" fill="#e0a94a" style="animation-delay:2.094s"></circle>
+    <circle class="blip-halo" cx="111" cy="168" r="10" fill="rgba(224,169,74,0.5)" style="animation-delay:3.885s"></circle>
+    <circle class="blip" cx="111" cy="168" r="4.5" fill="#e0a94a" style="animation-delay:3.885s"></circle>
+    <circle class="blip-halo" cx="150" cy="64" r="10" fill="rgba(224,169,74,0.5)" style="animation-delay:4.857s"></circle>
+    <circle class="blip" cx="150" cy="64" r="4.5" fill="#e0a94a" style="animation-delay:4.857s"></circle>
+    <circle class="blip-halo" cx="342" cy="170" r="12" fill="rgba(200,127,10,0.55)" style="animation-delay:6.769s"></circle>
+    <circle class="blip" cx="342" cy="170" r="5.5" fill="#c87f0a" style="animation-delay:6.769s"></circle>
+  </g>
+  <circle cx="200" cy="200" r="3" fill="#8891ab"></circle>
+</svg>
+
+<style>
+  @keyframes radar-sweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .sweep {
+    transform-box: view-box;
+    transform-origin: 200px 200px;
+    animation: radar-sweep 7s linear infinite;
+  }
+
+  @keyframes blip {
+    0% { opacity: 0; }
+    2% { opacity: 1; }
+    5% { opacity: 0.78; }
+    9% { opacity: 0.42; }
+    14% { opacity: 0.13; }
+    18% { opacity: 0; }
+    100% { opacity: 0; }
+  }
+  .blip {
+    opacity: 0;
+    animation: blip 7s linear infinite;
+  }
+
+  @keyframes blip-halo {
+    0% { opacity: 0; transform: scale(0.3); }
+    2% { opacity: 0.5; transform: scale(1); }
+    18% { opacity: 0; transform: scale(1.8); }
+    100% { opacity: 0; }
+  }
+  .blip-halo {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: blip-halo 7s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sweep {
+      animation: none;
+      opacity: 0.5;
+    }
+    .blip {
+      animation: none;
+      opacity: 0.5;
+    }
+    .blip-halo {
+      animation: none;
+      opacity: 0;
+    }
+  }
+</style>

@@ -2,7 +2,7 @@
 import { getCollection, getEntry } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Hero from '../components/Hero.astro';
-import PositioningMatrix from '../components/PositioningMatrix.astro';
+import HeroGraphic from '../components/hero/HeroGraphic.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
 import { deriveEyebrow } from '../lib/eyebrow';
@@ -32,18 +32,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     primaryCta={hero.primaryCta}
     ghostCta={hero.ghostCta}
   >
-    <PositioningMatrix
-      slot="matrix"
-      axisTop="Data-driven"
-      axisBottom="Narrative-driven"
-      axisLeft="Exploratory"
-      axisRight="Structured"
-      quadrants={['Frameworks', 'Case method', 'Discovery', 'Storytelling']}
-      dotTop="28%"
-      dotLeft="64%"
-      dotLabel="Isaiah"
-      ariaLabel="Positioning matrix: structured, data-driven approach, placed in the Case method quadrant."
-    />
+    <HeroGraphic slot="matrix" default="synthesis" />
   </Hero>
 
   <Band variant="paper" eyebrow="03 — Selected work">

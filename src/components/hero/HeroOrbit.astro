@@ -1,0 +1,147 @@
+---
+/**
+ * Orbit motif — nested tilted rings gently tipping out of phase while points
+ * revolve. Static rings/points are ported verbatim from the
+ * hero-graphic-options.html source artifact (the ORBIT card). The middle
+ * ring's amber comet trail (source's runtime `comet()` call:
+ * dur=13, delay=-3, count=18, step=0.04, headR=4, haloR=9, fade=false) is
+ * reproduced HERE, DETERMINISTICALLY, at BUILD TIME via the .map() below —
+ * same tail-first loop order, per-point radius/opacity/colour formula and
+ * rounding — so the emitted static SVG is byte-equivalent to what the
+ * source's script would have generated. NO runtime <script>.
+ *
+ * Gradient/keyframe/class names are orbit-scoped (Astro scopes <style>, but
+ * gradient IDs live in the shared SVG namespace, so they're prefixed to
+ * avoid colliding with the other simultaneously-rendered — merely hidden —
+ * variants).
+ */
+
+// comet() constants for orbit's middle-ring trail.
+const MID_PATH = 'M82,200 a118,50 0 1,0 236,0 a118,50 0 1,0 -236,0';
+const COUNT = 18;
+const STEP = 0.04;
+const HEAD_R = 4;
+const HALO_R = 9;
+const DUR = 13;
+const DELAY = -3;
+
+type TrailCircle = { r: string; opacity: string; color: string; animationDelay: string };
+
+function buildTrail(): TrailCircle[] {
+  const circles: TrailCircle[] = [];
+  // Tail first (faint, small), head last (bright, big) so the head paints on top.
+  for (let i = COUNT - 1; i >= 0; i--) {
+    const t = i / (COUNT - 1);
+    const r = (HEAD_R * (1 - 0.72 * t)).toFixed(2);
+    const op = Math.pow(1 - t, 1.35).toFixed(3);
+    const col = t < 0.22 ? '#f4cd77' : t < 0.55 ? '#e0a94a' : '#c87f0a';
+    circles.push({ r, opacity: op, color: col, animationDelay: `${DELAY + i * STEP}s` });
+  }
+  return circles;
+}
+
+const trail = buildTrail();
+---
+
+<svg viewBox="0 0 400 400" role="img" aria-label="Nested tilted rings gently tipping out of phase while points revolve, one lit amber">
+  <defs>
+    <linearGradient id="orbitRingMute" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#232d4f"></stop>
+      <stop offset="1" stop-color="#3d4c7d"></stop>
+    </linearGradient>
+    <linearGradient id="orbitRingAmber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="rgba(200,127,10,0.22)"></stop>
+      <stop offset="1" stop-color="rgba(224,169,74,0.62)"></stop>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(22 200 200)">
+    <g class="ring-flip" style="animation-duration:12s">
+      <ellipse cx="200" cy="200" rx="72" ry="30" fill="none" stroke="url(#orbitRingMute)" stroke-width="1.4"></ellipse>
+      <circle class="orbit-mover" cx="0" cy="0" r="4" fill="#8891ab" style="offset-path:path('M128,200 a72,30 0 1,0 144,0 a72,30 0 1,0 -144,0'); animation-duration:8s; animation-delay:-2s"></circle>
+    </g>
+    <g class="ring-flip" style="animation-duration:15s; animation-delay:-7.5s">
+      <ellipse cx="200" cy="200" rx="118" ry="50" fill="none" stroke="url(#orbitRingAmber)" stroke-width="1.5"></ellipse>
+      <g>
+        <circle
+          class="trail-head"
+          cx="0"
+          cy="0"
+          r={HALO_R}
+          fill="rgba(200,127,10,0.16)"
+          style={`offset-path:path('${MID_PATH}'); animation-duration:${DUR}s; animation-delay:${DELAY}s`}
+        ></circle>
+        {trail.map((c) => (
+          <circle
+            class="trail-head"
+            cx="0"
+            cy="0"
+            r={c.r}
+            fill={c.color}
+            opacity={c.opacity}
+            style={`offset-path:path('${MID_PATH}'); animation-duration:${DUR}s; animation-delay:${c.animationDelay}`}
+          ></circle>
+        ))}
+      </g>
+    </g>
+    <g class="ring-flip" style="animation-duration:13s">
+      <ellipse cx="200" cy="200" rx="162" ry="72" fill="none" stroke="url(#orbitRingMute)" stroke-width="1.4"></ellipse>
+      <circle class="orbit-mover" cx="0" cy="0" r="4" fill="#8891ab" style="offset-path:path('M38,200 a162,72 0 1,0 324,0 a162,72 0 1,0 -324,0'); animation-duration:19s; animation-delay:-9s"></circle>
+    </g>
+  </g>
+</svg>
+
+<style>
+  @keyframes headmove {
+    from { offset-distance: 0%; }
+    to { offset-distance: 100%; }
+  }
+  .trail-head {
+    offset-rotate: 0deg;
+    animation-name: headmove;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+
+  @keyframes orbit-flow {
+    0% { offset-distance: 0%; opacity: 0.6; }
+    25% { offset-distance: 25%; opacity: 0.3; }
+    50% { offset-distance: 50%; opacity: 0.6; }
+    75% { offset-distance: 75%; opacity: 1; }
+    100% { offset-distance: 100%; opacity: 0.6; }
+  }
+  .orbit-mover {
+    offset-rotate: 0deg;
+    animation-name: orbit-flow;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+
+  @keyframes tip {
+    0% { transform: scaleY(1); }
+    50% { transform: scaleY(0.42); }
+    100% { transform: scaleY(1); }
+  }
+  .ring-flip {
+    transform-box: view-box;
+    transform-origin: 200px 200px;
+    animation-name: tip;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ring-flip {
+      animation: none;
+      transform: none;
+    }
+    .trail-head {
+      animation: none;
+      offset-distance: 50%;
+    }
+    .orbit-mover {
+      animation: none;
+      offset-distance: 72%;
+      opacity: 0.85;
+    }
+  }
+</style>
