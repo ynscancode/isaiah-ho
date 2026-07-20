@@ -16,8 +16,11 @@
  * variants).
  */
 
-// comet() constants for orbit's middle-ring trail.
-const MID_PATH = 'M82,200 a118,50 0 1,0 236,0 a118,50 0 1,0 -236,0';
+// comet() constants for orbit's middle-ring trail. The sweep flag is 1 (vs
+// the inner/outer rings' 0) so this ring's comet travels the OPPOSITE
+// direction — neighbouring rings alternate direction. Same ellipse outline
+// (it's symmetric about y=200), only the traversal direction reverses.
+const MID_PATH = 'M82,200 a118,50 0 1,1 236,0 a118,50 0 1,1 -236,0';
 const COUNT = 18;
 const STEP = 0.04;
 const HEAD_R = 4;
