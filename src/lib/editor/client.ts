@@ -110,7 +110,29 @@ export async function deleteBlogPost(slug: string): Promise<SaveResult> {
   return { ok: true };
 }
 
-export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSha: string } | null> {
+export type PreviewSyncState = 'synced' | 'already-current' | 'conflict';
+
+export type PreviewResult = {
+  previewUrl: string;
+  lastCommitSha: string;
+  /** The just-synced draft tip that was built. Pass to pollPreviewStatus()
+   * as a read-only correlation filter only — never a git ref/path
+   * (senior-backend-dev-20260720T052230). */
+  targetSha: string;
+  /** True only when the server has Vercel API polling configured
+   * (VERCEL_API_TOKEN + VERCEL_PROJECT_ID). When false, no per-deployment
+   * status is available — callers must fall back to the alias `previewUrl`
+   * with honest "~30s" messaging (tech-lead-20260720T051536 graceful
+   * degradation). */
+  pollable: boolean;
+  syncState: PreviewSyncState;
+};
+
+/** POST /api/draft/preview — session+CSRF gated, triggers an on-demand
+ * preview build. Response contract per senior-backend-dev-20260720T052230.
+ * Returns null on failure (caller shows "no draft yet" / retry messaging;
+ * never a false "ready"). */
+export async function fetchPreview(): Promise<PreviewResult | null> {
   // POST + CSRF token: the endpoint now triggers an on-demand build, so it's
   // a CSRF-checked mutation (see src/pages/api/draft/preview.ts). Mirrors the
   // header + reauth handling of the other mutating calls above.
@@ -124,6 +146,22 @@ export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSh
     return null;
   }
   return res.json();
+}
+
+export type PreviewStatus =
+  | { pollable: false; state: 'UNKNOWN' }
+  | { pollable: true; state: 'QUEUED' | 'BUILDING' | 'ERROR' | 'READY'; url?: string };
+
+/** GET /api/draft/preview-status?targetSha=... — session-gated, no CSRF
+ * (pure read, mirrors fetchHistory()). Returns null only on an unexpected
+ * network/parse failure (the two expected/documented shapes above are both
+ * still 200s and returned as-is) — caller should treat null the same as a
+ * poll attempt that didn't resolve anything (keep polling / eventually
+ * time out), never as a false "ready". */
+export async function pollPreviewStatus(targetSha: string): Promise<PreviewStatus | null> {
+  const res = await fetch(`/api/draft/preview-status?targetSha=${encodeURIComponent(targetSha)}`);
+  if (!res.ok) return null;
+  return parseJsonSafe<PreviewStatus>(res);
 }
 
 // --- Item 4: version history / revert (tech-lead-20260718T082028 §E) ---

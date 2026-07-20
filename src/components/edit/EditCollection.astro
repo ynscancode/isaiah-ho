@@ -11,6 +11,7 @@ export type CollectionEntry = {
   title: string;
   body: string;
   href?: string;
+  detail?: string;
 };
 
 export type Props = {
@@ -36,6 +37,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           title={entry.title}
           body={entry.body}
           href={entry.href}
+          detail={entry.detail}
           editable
           editablePrefix={entry.id}
           removable
@@ -88,6 +90,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
     title: string;
     body: string;
     href?: string;
+    detail?: string;
   };
 
   const list = document.querySelector<HTMLElement>('[data-collection-list]');
@@ -272,6 +275,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         endDate: null,
         title: '',
         body: '',
+        detail: '',
       };
       working.set(id, newEntry);
       wireSlot(slot);

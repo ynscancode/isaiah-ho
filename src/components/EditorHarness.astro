@@ -333,6 +333,7 @@ const { contentSource } = Astro.props;
   import {
     fetchPreview,
     logoutAndRedirect,
+    pollPreviewStatus,
     publishDraft,
   } from '../lib/editor/client';
   import { canRedo, canUndo, redo, undo } from '../lib/editor/history';
@@ -418,22 +419,107 @@ const { contentSource } = Astro.props;
     window.dispatchEvent(new CustomEvent('editor:save-all'));
   });
 
+  // --- Item B: preview build freshness/timing (tech-lead-20260720T051536) ---
+  // Bounded client-side poll of the JUST-TRIGGERED build's own readiness,
+  // correlated by targetSha — this is the actual fix: the reveal only
+  // happens once that specific build is READY, never the moving alias.
+  // Interval is always cleared on READY/ERROR/timeout, and any new Preview
+  // click stops a still-running poll before starting a fresh one — no
+  // unbounded timers survive a re-click or accumulate.
+  const PREVIEW_POLL_INTERVAL_MS = 3500;
+  const PREVIEW_POLL_MAX_ATTEMPTS = 26; // ~91s ceiling at the interval above
+
+  let previewPollTimer: ReturnType<typeof setInterval> | undefined;
+
+  function stopPreviewPoll() {
+    if (previewPollTimer) {
+      clearInterval(previewPollTimer);
+      previewPollTimer = undefined;
+    }
+  }
+
+  function appendPreviewLink(url: string, label: string, caveat?: string) {
+    if (!message) return;
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = label;
+    message.appendChild(link);
+    if (caveat) message.append(` ${caveat}`);
+  }
+
   previewBtn?.addEventListener('click', async () => {
+    stopPreviewPoll();
     setMessage('Building preview… this takes about 30s.');
     const result = await fetchPreview();
     if (!result) {
       setMessage('No draft yet — save a change first, then try Preview again.');
       return;
     }
-    setMessage('Preview is building (~30s) — open it once ready: ');
-    if (message) {
-      const link = document.createElement('a');
-      link.href = result.previewUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.textContent = `Open preview (ready in ~30s): ${result.previewUrl}`;
-      message.appendChild(link);
+
+    // Non-blocking honest note when the draft couldn't be synced with the
+    // latest published site — never swallowed, never blocks the rest of
+    // the flow.
+    const conflictNote =
+      result.syncState === 'conflict'
+        ? " Note: couldn't merge the latest published site changes into this preview."
+        : '';
+    function setPreviewMessage(text: string) {
+      setMessage(text + conflictNote);
     }
+
+    if (!result.pollable) {
+      // Graceful degradation (no Vercel API token/project configured
+      // server-side): today's behavior — show the alias link immediately
+      // with an honest caveat, rather than pretending we can confirm
+      // readiness.
+      setPreviewMessage(
+        'Preview is building (~30s). The link below may briefly show a previous build until the new one finishes: '
+      );
+      appendPreviewLink(result.previewUrl, `Open preview: ${result.previewUrl}`);
+      return;
+    }
+
+    setPreviewMessage('Building preview… this takes about 30s.');
+    let attempts = 0;
+    previewPollTimer = setInterval(async () => {
+      attempts++;
+      const status = await pollPreviewStatus(result.targetSha);
+
+      if (status?.pollable && status.state === 'READY' && status.url) {
+        stopPreviewPoll();
+        setPreviewMessage('Preview is ready: ');
+        appendPreviewLink(status.url, `Open preview: ${status.url}`);
+        return;
+      }
+
+      if (status?.pollable && status.state === 'ERROR') {
+        stopPreviewPoll();
+        setPreviewMessage(
+          'Preview build failed. You can try Preview again, or open the last known build: '
+        );
+        appendPreviewLink(result.previewUrl, `Open preview: ${result.previewUrl}`, '(may show a previous build)');
+        return;
+      }
+
+      if (status?.pollable && (status.state === 'QUEUED' || status.state === 'BUILDING')) {
+        setPreviewMessage(
+          `Building preview… ${status.state === 'QUEUED' ? 'queued' : 'still building'} (~30s).`
+        );
+      }
+      // A null/non-pollable poll result (transient fetch failure, or the
+      // server briefly can't see the deployment yet) is not an error —
+      // just keep polling until READY/ERROR/timeout below.
+
+      if (attempts >= PREVIEW_POLL_MAX_ATTEMPTS) {
+        stopPreviewPoll();
+        setPreviewMessage(
+          'Still building — taking longer than expected. Open when ready (may show a previous build until it finishes): '
+        );
+        appendPreviewLink(result.previewUrl, `Open preview: ${result.previewUrl}`, '(may show a previous build)');
+      }
+    }, PREVIEW_POLL_INTERVAL_MS);
   });
 
   publishBtn?.addEventListener('click', async () => {
