@@ -1,6 +1,7 @@
 ---
 import Band from '../Band.astro';
 import Card from '../Card.astro';
+import { groupByCategory } from '../../lib/experienceGroups';
 
 export type CollectionEntry = {
   id: string;
@@ -23,28 +24,76 @@ export type Props = {
 
 const { area, eyebrow, entries, emptyStates } = Astro.props;
 const heading = area === 'projects' ? 'Projects' : 'Experience';
+
+// tech-lead-20260720T160424Z Item 3 / ui-ux-designer-20260721T050000Z —
+// experience-branch-only grouping, computed once here at server render
+// ("load time") from the seed `entries` prop, NOT reactive to later
+// client-side edits (a category contenteditable change re-groups only on
+// the next full page load). The projects branch (area === 'projects')
+// never computes groups and renders the original single flat `.cards`
+// grid below, byte-identical to before this change.
+const isExperience = area === 'experience';
+const groups = isExperience ? groupByCategory(entries, (entry) => entry.category) : [];
+const showSubheads = isExperience && groups.length > 1;
 ---
 
 <Band variant="paper" eyebrow={eyebrow} as="div">
   <h1>{heading}</h1>
-  <div class="cards" data-editable-area={area} data-collection-list>
-    {entries.map((entry) => (
-      <div class="card-slot" data-entry-id={entry.id}>
-        <Card
-          category={entry.category}
-          startDate={entry.startDate}
-          endDate={entry.endDate}
-          title={entry.title}
-          body={entry.body}
-          href={entry.href}
-          detail={entry.detail}
-          editable
-          editablePrefix={entry.id}
-          removable
-        />
+  {showSubheads ? (
+    <div class="collection-groups" data-editable-area={area} data-collection-list>
+      {groups.map((group) => (
+        <div class="category-group">
+          <h2 class="mono group-subhead">{group.category}</h2>
+          <div class="cards">
+            {group.entries.map((entry) => (
+              <div class="card-slot" data-entry-id={entry.id}>
+                <Card
+                  category={entry.category}
+                  startDate={entry.startDate}
+                  endDate={entry.endDate}
+                  title={entry.title}
+                  body={entry.body}
+                  href={entry.href}
+                  detail={entry.detail}
+                  editable
+                  editablePrefix={entry.id}
+                  removable
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {/* ui-ux-designer-20260721T050000Z Item 3.2 — trailing, unlabeled
+          "pending" grid. New entries created via "+ Add" during this
+          session land here (not prematurely bucketed into "Other"); the
+          grouping re-reflects on the next full page load. Gets the same
+          border-top divider treatment as any group boundary via
+          .category-group, but no subhead text. */}
+      <div class="category-group pending-group">
+        <div class="cards" data-collection-sink />
       </div>
-    ))}
-  </div>
+    </div>
+  ) : (
+    <div class="cards" data-editable-area={area} data-collection-list>
+      {entries.map((entry) => (
+        <div class="card-slot" data-entry-id={entry.id}>
+          <Card
+            category={entry.category}
+            startDate={entry.startDate}
+            endDate={entry.endDate}
+            title={entry.title}
+            body={entry.body}
+            href={entry.href}
+            detail={entry.detail}
+            editable
+            editablePrefix={entry.id}
+            removable
+          />
+        </div>
+      ))}
+    </div>
+  )}
   <button type="button" class="editor-add-btn" id={`add-${area}-entry`}>+ Add {area === 'projects' ? 'project' : 'entry'}</button>
 
   <template id={`tpl-${area}-card`}>
@@ -96,7 +145,14 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
   const list = document.querySelector<HTMLElement>('[data-collection-list]');
   const areaAttr = list?.getAttribute('data-editable-area');
   const area = areaAttr === 'projects' || areaAttr === 'experience' ? areaAttr : null;
-  if (list && area) {
+  // Ungrouped render (projects always; experience when groups.length <= 1):
+  // `list` itself is the flat `.cards` grid, so it doubles as the append
+  // target. Grouped experience render: `list` is the outer wrapper around
+  // all `.category-group`s, and appends must land in the trailing,
+  // unlabeled "pending" grid instead (ui-ux-designer-20260721T050000Z item
+  // 3.2) — marked `data-collection-sink`.
+  const sink = document.querySelector<HTMLElement>('[data-collection-sink]') ?? list;
+  if (list && sink && area) {
     // Re-bind to a narrowed const: TS doesn't retain the `area !== null`
     // narrowing for a variable captured by the nested save() closure below.
     const areaName: 'projects' | 'experience' = area;
@@ -256,9 +312,10 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       const wrapper = document.createElement('div');
       wrapper.innerHTML = html;
       const slot = wrapper.firstElementChild as HTMLElement;
-      // `addBtn` is a sibling of `list` (the .cards grid), not a child of it —
-      // append to the grid itself rather than insertBefore(addBtn).
-      list.appendChild(slot);
+      // `addBtn` is a sibling of `list` (or, when grouped, of the outer
+      // wrapper) — append to `sink` (the flat grid, or the trailing
+      // "pending" grid when grouped) rather than insertBefore(addBtn).
+      sink.appendChild(slot);
 
       // Truly empty seed (product-owner-20260717T200000 Decision 4) —
       // category/title/body start as empty strings (shown via the
@@ -343,6 +400,33 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
 
   template {
     display: none;
+  }
+
+  /* ui-ux-designer-20260721T050000Z Item 3.2 — same "group subhead"
+     rhythm as experience.astro, mirrored here for the experience-branch
+     editor grouping (area === 'projects' never renders .category-group,
+     so this is inert/unused on that branch). Scoped to this component,
+     does NOT touch the shared global .cards rule. */
+  .category-group {
+    margin-top: 2.5rem;
+  }
+
+  .category-group:first-of-type {
+    margin-top: 2rem;
+  }
+
+  .category-group:not(:first-of-type) {
+    border-top: 1px solid var(--line);
+    padding-top: 2rem;
+  }
+
+  .category-group .cards {
+    margin-top: 1.25rem;
+  }
+
+  .group-subhead {
+    color: var(--signal-text);
+    margin: 0 0 0.6rem;
   }
 
   .editor-note {
