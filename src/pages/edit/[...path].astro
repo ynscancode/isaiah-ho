@@ -186,10 +186,10 @@ if (segments.length === 0) {
   {body?.view === 'about' && <EditAbout about={body.about} />}
   {body?.view === 'contact' && <EditContact contact={body.contact} emptyStates={body.emptyStates} />}
   {body?.view === 'projects' && (
-    <EditCollection area="projects" eyebrow="Selected work" entries={body.entries} emptyStates={body.emptyStates} />
+    <EditCollection area="projects" entries={body.entries} emptyStates={body.emptyStates} />
   )}
   {body?.view === 'experience' && (
-    <EditCollection area="experience" eyebrow="Work history" entries={body.entries} emptyStates={body.emptyStates} />
+    <EditCollection area="experience" entries={body.entries} emptyStates={body.emptyStates} />
   )}
   {body?.view === 'blog-list' && <EditBlogList posts={body.posts} emptyStates={body.emptyStates} />}
   {body?.view === 'blog-post' && <EditBlogPost post={body.post} isNew={body.isNew} />}

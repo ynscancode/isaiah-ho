@@ -26,8 +26,7 @@ const emptyStateText = emptyStatesEntry?.data.projects ?? 'Coming soon.';
                 eyebrow={deriveEyebrow(project.data.category, project.data.startDate, project.data.endDate)}
                 title={project.data.title}
                 body={project.data.body}
-                href={project.data.href}
-                detail={project.data.detail}
+                href={`/projects/${project.data.slug}`}
               />
             </div>
           ))}

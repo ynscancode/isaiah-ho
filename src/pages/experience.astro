@@ -26,8 +26,7 @@ const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
                 eyebrow={deriveEyebrow(exp.data.category, exp.data.startDate, exp.data.endDate)}
                 title={exp.data.title}
                 body={exp.data.body}
-                href={exp.data.href}
-                detail={exp.data.detail}
+                href={`/experience/${exp.data.slug}`}
               />
             </div>
           ))}
