@@ -63,6 +63,33 @@ function deriveArea(message: string): string {
   return firstLine;
 }
 
+/** Editor-authored "content version" predicate (tech-lead-20260719T153953
+ * Fix 3b, director-20260719T154351 decision 1): true for the exact commit-
+ * message family the editor's write/revert paths produce, false for
+ * everything else — specifically false for the publish/sync MERGE commits
+ * (`Publish content edits from <draft>`, `Sync master into editor-draft`)
+ * that would otherwise clutter post-publish history, and false for any
+ * unrecognized/direct-push message. Mirrors — byte-for-byte in intent — the
+ * prefixes `src/pages/api/content/[area].ts` writes and
+ * `src/pages/api/draft/revert.ts`'s `buildRevertMessage` emits, so this
+ * predicate can never drift from what those two call sites actually produce.
+ * Deliberately does NOT exclude already-published "Update <area> content" /
+ * "Update blog post:" commits now living on master — those ARE the versions
+ * the history UI must show as revert targets (director decision 1); this
+ * predicate is about dropping MERGE noise, not about commit origin/branch.
+ * Pure, dependency-free, unit-testable without a browser or GitHub call. */
+export function isEditorVersionCommit(message: string): boolean {
+  const firstLine = message.split('\n')[0] ?? '';
+  const patterns: RegExp[] = [
+    /^Update (\w[\w-]*) content$/,
+    /^Update blog post: /,
+    /^Delete blog post: /,
+    /^Revert (\w[\w-]*) content to [0-9a-f]{7,40}$/,
+    /^Revert blog post .+ to [0-9a-f]{7,40}$/,
+  ];
+  return patterns.some((re) => re.test(firstLine));
+}
+
 /** Groups `commits` (must already be newest-first, e.g. as returned by
  * `listCommitsOnBranch`) into sessions using adjacent-gap coalescing:
  * consecutive commits stay in the same session while the gap between the
