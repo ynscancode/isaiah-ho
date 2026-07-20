@@ -111,8 +111,18 @@ export async function deleteBlogPost(slug: string): Promise<SaveResult> {
 }
 
 export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSha: string } | null> {
-  const res = await fetch('/api/draft/preview');
-  if (!res.ok) return null;
+  // POST + CSRF token: the endpoint now triggers an on-demand build, so it's
+  // a CSRF-checked mutation (see src/pages/api/draft/preview.ts). Mirrors the
+  // header + reauth handling of the other mutating calls above.
+  const res = await fetch('/api/draft/preview', {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    checkReauthNeeded(res.status, data);
+    return null;
+  }
   return res.json();
 }
 

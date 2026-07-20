@@ -29,9 +29,14 @@ async function triggerPreviewBuild(): Promise<void> {
   }
 }
 
-// Auth already enforced by src/middleware.ts (GET on a privileged path still
-// requires a valid session; no CSRF needed for a read).
-export const GET: APIRoute = async () => {
+// POST (not GET) specifically because this endpoint now has a side effect —
+// it fires an on-demand Vercel build via the deploy hook. A GET with a
+// side effect is CSRF-reachable via a top-level navigation (SameSite=lax
+// still sends the session cookie); making it POST means src/middleware.ts
+// enforces the double-submit CSRF check, so only our own origin's JS (which
+// can read the csrf_token cookie and echo it as X-CSRF-Token) can trigger a
+// build. Auth (valid session) is still enforced by the middleware too.
+export const POST: APIRoute = async () => {
   try {
     const token = getWriteToken();
     const ref = getRepoRef();
