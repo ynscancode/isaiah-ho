@@ -141,7 +141,25 @@ const { post, isNew } = Astro.props;
     });
     draftEl.addEventListener('change', () => {
       working.draft = draftEl.checked;
-      void autosaver.flush(); // checkbox toggle — discrete commit, like a <select> change
+      // Discrete commit, like a <select> change — EXCEPT when the post
+      // can't possibly save yet: title and description are server-required
+      // (schemas.ts blogPostBodySchema .min(1)) and both start empty on a
+      // brand-new post (isNew), while `draft` itself starts pre-checked
+      // (true). So the very first click most users make on a fresh post —
+      // unchecking "Draft (unpublished)" before typing anything else — used
+      // to fire an immediate flush() that failed (client-side
+      // `missing_title` guard in saveBlogPost, or the server's
+      // validation_failed for an empty description) and surfaced a scary
+      // "Save failed" banner for what is not a real failure, just nothing
+      // saveable yet. Recording the toggle in `working` and skipping the
+      // network call here is silent (no false "Saved", no error) and safe:
+      // the very next successful save (once title/description are filled,
+      // via blur or another discrete event) sends this `working.draft`
+      // value, so the toggle is never lost. Existing posts always have
+      // both fields populated already, so this guard never fires for them
+      // — behavior there is unchanged (always unconditional flush).
+      if (!working.title.trim() || !working.description.trim()) return;
+      void autosaver.flush();
     });
     tagsEl.addEventListener('input', () => {
       working.tags = tagsEl.value
