@@ -11,7 +11,8 @@
       "ghostCta": {
         "label": "View projects",
         "href": "/projects"
-      }
+      },
+      "graphic": "rotation"
     }
   },
   "about": {
