@@ -7,7 +7,7 @@ import {
 } from '../../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, COMMIT_AUTHOR } from '../../../lib/gitConfig';
 import {
-  heroBodySchema,
+  homeBodySchema,
   aboutBodySchema,
   contactBodySchema,
   projectsBodySchema,
@@ -100,9 +100,13 @@ export const POST: APIRoute = async ({ params, request }) => {
       const siteData = JSON.parse(fromBase64(existing.contentBase64)) as Record<string, unknown>;
 
       if (area === 'home') {
-        const parsed = heroBodySchema.safeParse(rawBody);
+        const parsed = homeBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');
-        siteData.home = { hero: parsed.data };
+        // Split so a hero-field save and a highlights save (both post the
+        // same flat `working` body from EditHome) never clobber each other
+        // (tech-lead-20260720T113459Z 1d).
+        const { highlights, ...hero } = parsed.data;
+        siteData.home = { hero, highlights };
       } else if (area === 'about') {
         const parsed = aboutBodySchema.safeParse(rawBody);
         if (!parsed.success) return badRequest('validation_failed');

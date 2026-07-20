@@ -52,6 +52,22 @@ export const heroBodySchema = z.object({
   graphic: z.enum(HERO_VARIANTS).optional().default(DEFAULT_HERO_VARIANT),
 });
 
+// Homepage Highlights (tech-lead-20260720T113459Z). One flat ref shape,
+// `type` discriminates resolution: project -> resolve by `slug`, blog ->
+// resolve by post `id`. Never stores a copied title/body — resolved against
+// the live collections at render/edit time (KB-0020), which is also what
+// makes a deleted/renamed source item detectable (AC7) instead of silently
+// stale.
+export const highlightRefSchema = z.object({
+  type: z.enum(['project', 'blog']),
+  ref: z.string().min(1).max(200),
+});
+
+// SERVER-SIDE cap (AC3 / KB-0017): the editor UI also disables "+ Add" past
+// 6, but that is not a control — an over-limit array posted directly must be
+// rejected here, never silently truncated at render time.
+export const highlightsSchema = z.array(highlightRefSchema).max(6);
+
 export const aboutBodySchema = z.object({
   body: z.string().max(20_000),
   image: z
@@ -115,6 +131,15 @@ export const contactLinkSchema = z
     }
   });
 
+// Homepage body (hero fields + highlights, posted together as one `working`
+// object by EditHome — see [area].ts `home` branch for the split-on-write).
+// `heroBodySchema` itself stays unchanged; `highlights` rides alongside it.
+// `.optional().default([])`: a home save that predates this field (or omits
+// it) yields an empty array, not a validation failure (back-compat / AC4).
+export const homeBodySchema = heroBodySchema.extend({
+  highlights: highlightsSchema.optional().default([]),
+});
+
 export const contactBodySchema = z.object({
   lede: z.string().max(2000),
   links: z.array(contactLinkSchema).max(50),
@@ -174,12 +199,15 @@ export const emptyStatesBodySchema = z.object({
   experience: z.string().max(500),
   blog: z.string().max(500),
   contact: z.string().max(500),
+  highlights: z.string().max(500),
 });
 
 export type HeroBody = ReturnType<typeof heroBodySchema.parse>;
+export type HomeBody = ReturnType<typeof homeBodySchema.parse>;
 export type AboutBody = ReturnType<typeof aboutBodySchema.parse>;
 export type ContactBody = ReturnType<typeof contactBodySchema.parse>;
 export type ProjectsBody = ReturnType<typeof projectsBodySchema.parse>;
 export type ExperienceBody = ReturnType<typeof experienceBodySchema.parse>;
 export type BlogPostBody = ReturnType<typeof blogPostBodySchema.parse>;
 export type EmptyStatesBody = ReturnType<typeof emptyStatesBodySchema.parse>;
+export type HighlightRef = ReturnType<typeof highlightRefSchema.parse>;

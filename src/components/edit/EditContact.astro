@@ -127,7 +127,7 @@ const { contact, emptyStates } = Astro.props;
     // commit(historyId) (wireField's own blur listener above) runs first;
     // this second blur listener (registered after) fires next.
     ledeEl.addEventListener('blur', () => {
-      void autosaver.flush();
+      void autosaver.flushIfDirty();
     });
 
     function fieldOf(el: HTMLElement): { id: string; field: keyof ContactLink } | null {
@@ -227,7 +227,7 @@ const { contact, emptyStates } = Astro.props;
           },
         });
         labelEl.addEventListener('blur', () => {
-          void autosaver.flush();
+          void autosaver.flushIfDirty();
         });
       }
       if (rowId && valueEl) {
@@ -247,7 +247,7 @@ const { contact, emptyStates } = Astro.props;
           },
         });
         valueEl.addEventListener('blur', () => {
-          void autosaver.flush();
+          void autosaver.flushIfDirty();
         });
       }
 
@@ -339,7 +339,7 @@ const { contact, emptyStates } = Astro.props;
     // commit(historyId) (wireField's own blur listener above) runs first;
     // this second blur listener (registered after) fires next.
     emptyStateEl.addEventListener('blur', () => {
-      void emptyStatesAutosaver.flush();
+      void emptyStatesAutosaver.flushIfDirty();
     });
 
     window.addEventListener('editor:save-all', () => {
