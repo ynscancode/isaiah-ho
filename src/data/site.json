@@ -15,8 +15,14 @@
       "graphic": "rotation"
     },
     "highlights": [
-      { "type": "project", "ref": "market-entry-fnb" },
-      { "type": "project", "ref": "sme-digitalisation-grants" }
+      {
+        "type": "project",
+        "ref": "market-entry-fnb"
+      },
+      {
+        "type": "project",
+        "ref": "sme-digitalisation-grants"
+      }
     ]
   },
   "about": {
@@ -45,6 +51,6 @@
     "experience": "Stay tuned for more.",
     "blog": "Stay tuned for more.",
     "contact": "Coming soon.",
-    "highlights": "No highlights selected yet — check back soon."
+    "highlights": "Stay tuned for more."
   }
 }
