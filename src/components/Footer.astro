@@ -1,6 +1,11 @@
 ---
 import { getEntry } from 'astro:content';
 
+// Build-time year — used as the rendered fallback so the copyright is correct
+// with JavaScript disabled and for crawlers. On a STATIC site this value is
+// frozen at build time, so the inline script below refreshes it to the
+// visitor's actual current year on load (covers the site sitting un-rebuilt
+// across a New Year).
 const year = new Date().getFullYear();
 
 const contactEntry = await getEntry('site', 'contact');
@@ -15,7 +20,7 @@ function labelFor(link: { type: 'email' | 'linkedin' | 'github' | 'other'; label
 ---
 
 <footer>
-  <span>&copy; {year} Isaiah Ho</span>
+  <span>&copy; <span id="footer-year">{year}</span> Isaiah Ho</span>
   <span>
     {links.map((link, i) => (
       <>
@@ -29,6 +34,16 @@ function labelFor(link: { type: 'email' | 'linkedin' | 'github' | 'other'; label
     ))}
   </span>
 </footer>
+
+<script is:inline>
+  // Keep the copyright year current in the visitor's browser regardless of
+  // when the static site was last built. Falls back silently to the
+  // build-time year if this doesn't run.
+  (function () {
+    var el = document.getElementById('footer-year');
+    if (el) el.textContent = String(new Date().getFullYear());
+  })();
+</script>
 
 <style>
   footer {
