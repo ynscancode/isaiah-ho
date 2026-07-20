@@ -1,0 +1,143 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Band from '../../components/Band.astro';
+import { bodyToHtml } from '../../lib/plainText';
+import { deriveEyebrow } from '../../lib/eyebrow';
+
+export async function getStaticPaths() {
+  // No draft filter — the experience collection has no `draft` field. Every
+  // entry gets a page (tech-lead-20260720T064442 Decision 1): a card must
+  // never be a dead link.
+  const experience = await getCollection('experience');
+  return experience.map((entry) => ({
+    params: { slug: entry.data.slug },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+
+// Editor-authored long-form text lives in `detail`; no entry currently has
+// one, so this falls back to `body` (required, non-empty) — the page is
+// never blank. bodyToHtml (src/lib/plainText.ts) is the ONLY thing allowed
+// to feed set:html: it escapes HTML first, THEN wraps blank-line-separated
+// blocks as <p> and single newlines as <br>. The raw detail/body string is
+// never passed to set:html directly (ARCH-0005 A2 / XSS gate).
+const hasDetail = (entry.data.detail ?? '').trim().length > 0;
+const bodyHtml = bodyToHtml(hasDetail ? entry.data.detail! : entry.data.body);
+
+const eyebrow = deriveEyebrow(entry.data.category, entry.data.startDate, entry.data.endDate);
+---
+
+<BaseLayout title={entry.data.title} description={entry.data.body}>
+  <Band variant="paper">
+    <a class="back-link" href="/experience">&larr; Back to experience</a>
+    <span class="mono post-date">{eyebrow}</span>
+    <h1>{entry.data.title}</h1>
+    <div class="prose" set:html={bodyHtml} />
+    {entry.data.href && (
+      <a class="card-detail-link mono" href={entry.data.href} target="_blank" rel="noopener">Visit ↗</a>
+    )}
+  </Band>
+</BaseLayout>
+
+<style>
+  .back-link {
+    display: inline-block;
+    margin-bottom: 1.5rem;
+    color: var(--signal-text);
+    text-decoration: none;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 0.9rem;
+  }
+
+  .back-link:hover {
+    text-decoration: underline;
+  }
+
+  .post-date {
+    color: var(--signal-text);
+    display: block;
+    margin-bottom: 0.6rem;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+    margin: 0 0 2rem;
+    max-width: 22ch;
+  }
+
+  .prose {
+    max-width: 70ch;
+    font-size: 1.05rem;
+  }
+
+  .prose :global(h2) {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.4rem;
+    margin: 2.2rem 0 0.8rem;
+  }
+
+  .prose :global(h3) {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.15rem;
+    margin: 1.8rem 0 0.6rem;
+  }
+
+  .prose :global(p) {
+    margin: 0 0 1.2rem;
+  }
+
+  .prose :global(ul),
+  .prose :global(ol) {
+    margin: 0 0 1.2rem;
+    padding-left: 1.4rem;
+  }
+
+  .prose :global(li) {
+    margin-bottom: 0.4rem;
+  }
+
+  .prose :global(blockquote) {
+    margin: 1.5rem 0;
+    padding: 0.2rem 0 0.2rem 1.2rem;
+    border-left: 3px solid var(--signal);
+    color: var(--slate);
+    font-style: italic;
+  }
+
+  .prose :global(code) {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.9em;
+    background: #ece8de;
+    padding: 0.15em 0.35em;
+    border-radius: 2px;
+  }
+
+  .prose :global(pre) {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 1.2rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  .prose :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+
+  .prose :global(a) {
+    color: var(--signal-text);
+  }
+
+  .card-detail-link {
+    display: block;
+    margin-top: 0.9rem;
+    font-size: 0.78rem;
+    color: var(--signal-text);
+    letter-spacing: 0.02em;
+  }
+</style>

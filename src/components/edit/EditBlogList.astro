@@ -11,7 +11,7 @@ const { posts, emptyStates } = Astro.props;
 const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
 ---
 
-<Band variant="paper" eyebrow="Latest writing" as="div">
+<Band variant="paper" as="div">
   <h1>Blog</h1>
   <a class="editor-add-btn" href="/edit/blog/new">+ Add blog post</a>
   <div class="cards">

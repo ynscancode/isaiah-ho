@@ -6,9 +6,10 @@ export type Props = {
   title: string;
   body: string;
   href?: string;
-  /** Optional expanded description. When present (and the card is
-   * non-editable) the card renders as a native <details>/<summary>
-   * disclosure — see tech-lead-20260720T051637 §2. */
+  /** Optional expanded description. Editor-only long-form field, edited in
+   * place via `.card-detail-edit`; the public card is a plain link and does
+   * NOT render this — the full text is shown on the entry's detail page
+   * instead (see tech-lead-20260720T064442). */
   detail?: string;
   tags?: string[];
   /** Editor-only, defaults false — see Hero.astro's comment for the
@@ -45,97 +46,74 @@ const {
   startDate = null,
   endDate = null,
 } = Astro.props;
-// Only the public (non-editable) render may disclose — the editable branch
-// stays <div> unconditionally so <details> never reaches the editor
-// (ARCH-0005, tech-lead-20260720T051637 §2).
-const hasDetail = !editable && detail.trim().length > 0;
-const Tag = editable ? 'div' : hasDetail ? 'details' : href ? 'a' : 'div';
+const Tag = editable ? 'div' : href ? 'a' : 'div';
 ---
 
 <Tag
   class="card"
   style={editable ? 'position:relative' : undefined}
-  {...(!editable && !hasDetail && href ? { href } : {})}
+  {...(!editable && href ? { href } : {})}
 >
   {editable && removable && (
     <button type="button" class="card-remove-btn" data-remove-entry={editablePrefix} aria-label={`Remove ${title || 'entry'}`}>
       Remove
     </button>
   )}
-  {hasDetail ? (
+  {editable ? (
     <>
-      <summary>
-        <span class="mono card-eyebrow">{eyebrow}</span>
-        <h3>{title}</h3>
-        <p>{body}</p>
-        <span class="card-cue mono" aria-hidden="true">Details ↓</span>
-      </summary>
-      <div class="card-detail">
-        <p>{detail}</p>
-        {href && (
-          <a class="card-detail-link mono" href={href} target="_blank" rel="noopener">View project ↗</a>
-        )}
+      <span
+        class="mono card-eyebrow"
+        contenteditable="true"
+        data-editable={`${editablePrefix}.category`}
+        data-placeholder="e.g. Internship, Case competition, Leadership"
+      >{category}</span>
+      <div class="editor-inline-controls card-date-fields">
+        <div>
+          <label class="editor-field-label mono">Start</label>
+          <input type="date" class="editor-input card-date-input" value={startDate ?? ''} data-editable={`${editablePrefix}.startDate`} />
+        </div>
+        <div>
+          <label class="editor-field-label mono">End</label>
+          <input type="date" class="editor-input card-date-input" value={endDate ?? ''} data-editable={`${editablePrefix}.endDate`} />
+        </div>
       </div>
     </>
   ) : (
-    <>
-      {editable ? (
-        <>
-          <span
-            class="mono card-eyebrow"
-            contenteditable="true"
-            data-editable={`${editablePrefix}.category`}
-            data-placeholder="e.g. Internship, Case competition, Leadership"
-          >{category}</span>
-          <div class="editor-inline-controls card-date-fields">
-            <div>
-              <label class="editor-field-label mono">Start</label>
-              <input type="date" class="editor-input card-date-input" value={startDate ?? ''} data-editable={`${editablePrefix}.startDate`} />
-            </div>
-            <div>
-              <label class="editor-field-label mono">End</label>
-              <input type="date" class="editor-input card-date-input" value={endDate ?? ''} data-editable={`${editablePrefix}.endDate`} />
-            </div>
-          </div>
-        </>
-      ) : (
-        <span class="mono card-eyebrow">{eyebrow}</span>
-      )}
-      <h3
-        data-editable={editable ? `${editablePrefix}.title` : undefined}
-        data-placeholder={editable ? 'Untitled' : undefined}
-        contenteditable={editable ? 'true' : undefined}
-      >{title}</h3>
-      <p
-        data-editable={editable ? `${editablePrefix}.body` : undefined}
-        data-placeholder={editable ? 'One or two sentences on scope and impact.' : undefined}
-        contenteditable={editable ? 'true' : undefined}
-      >{body}</p>
-      {editable && (
-        <p
-          class="card-detail-edit"
-          data-editable={`${editablePrefix}.detail`}
-          data-placeholder="Longer description shown when the card is expanded (optional)."
-          contenteditable="true"
-        >{detail}</p>
-      )}
-      {editable && (
-        <p class="mono card-href-field">
-          link: <span data-editable-href-value={`${editablePrefix}.href`}>{href || '(none)'}</span>
-          <button type="button" class="edit-href-btn" data-editable-href={`${editablePrefix}.href`} data-nullable="true">edit link</button>
-        </p>
-      )}
-      {tags.length > 0 && (
-        <ul class="mono card-tags">
-          {tags.map((tag) => (
-            <li>{tag}</li>
-          ))}
-        </ul>
-      )}
-      {!editable && href && (
-        <span class="card-cue mono" aria-hidden="true">Read →</span>
-      )}
-    </>
+    <span class="mono card-eyebrow">{eyebrow}</span>
+  )}
+  <h3
+    data-editable={editable ? `${editablePrefix}.title` : undefined}
+    data-placeholder={editable ? 'Untitled' : undefined}
+    contenteditable={editable ? 'true' : undefined}
+  >{title}</h3>
+  <p
+    data-editable={editable ? `${editablePrefix}.body` : undefined}
+    data-placeholder={editable ? 'One or two sentences on scope and impact.' : undefined}
+    contenteditable={editable ? 'true' : undefined}
+  >{body}</p>
+  {editable && (
+    <p
+      class="card-detail-edit"
+      data-editable={`${editablePrefix}.detail`}
+      data-placeholder="Longer description shown when the card is expanded (optional)."
+      contenteditable="true"
+    >{detail}</p>
+  )}
+  {editable && (
+    <p class="mono card-href-field">
+      link: <span data-editable-href-value={`${editablePrefix}.href`}>{href || '(none)'}</span>
+      <button type="button" class="edit-href-btn" data-editable-href={`${editablePrefix}.href`} data-nullable="true">edit link</button>
+    </p>
+  )}
+  {tags.length > 0 && (
+    <ul class="mono card-tags">
+      {tags.map((tag) => (
+        <li>{tag}</li>
+      ))}
+    </ul>
+  )}
+  {!editable && href && (
+    <span class="card-cue mono" aria-hidden="true">Read →</span>
   )}
 </Tag>
 
@@ -152,50 +130,21 @@ const Tag = editable ? 'div' : hasDetail ? 'details' : href ? 'a' : 'div';
     height: 100%;
   }
 
-  a.card,
-  details.card {
+  a.card {
     transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  a.card:hover,
-  details.card:not([open]):hover {
+  a.card:hover {
     border-color: var(--signal);
     transform: translateY(-3px);
     box-shadow: 0 6px 16px rgba(18, 24, 43, 0.1);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    a.card:hover,
-    details.card:not([open]):hover {
+    a.card:hover {
       transform: none;
       box-shadow: none;
     }
-  }
-
-  details.card summary {
-    cursor: pointer;
-    list-style: none;
-  }
-
-  details.card summary::-webkit-details-marker {
-    display: none;
-  }
-
-  details.card summary:focus-visible {
-    outline: var(--focus-ring);
-    outline-offset: 2px;
-  }
-
-  .card-detail {
-    margin-top: 1rem;
-  }
-
-  .card-detail-link {
-    display: block;
-    margin-top: 0.9rem;
-    font-size: 0.78rem;
-    color: var(--signal-text);
-    letter-spacing: 0.02em;
   }
 
   .card-detail-edit {
