@@ -34,3 +34,29 @@ export function buildPreviewUrl(branch: string): string {
   const { owner, repo } = getRepoRef();
   return `https://github.com/${owner}/${repo}/tree/${encodeURIComponent(branch)}`;
 }
+
+// --- Vercel Deployments API (tech-lead-20260720T051536 RC1 fix) ---
+// A user-setup residual, like VERCEL_PREVIEW_DEPLOY_HOOK before it: all
+// optional (empty-string default), read via optionalEnv only (KB-0018), and
+// consulted by preview.ts/preview-status.ts purely to gate `pollable` — a
+// missing token/project id degrades to today's alias-URL behavior, never a
+// 500. Never returned in any response body.
+
+export function getVercelApiToken(): string {
+  return optionalEnv('VERCEL_API_TOKEN', '');
+}
+
+export function getVercelProjectId(): string {
+  return optionalEnv('VERCEL_PROJECT_ID', '');
+}
+
+export function getVercelTeamId(): string {
+  return optionalEnv('VERCEL_TEAM_ID', '');
+}
+
+/** True only when both the token and project id are configured — the
+ * minimum needed to query the Deployments API at all. Callers use this to
+ * decide `pollable` without duplicating the two-var check. */
+export function isVercelPollingConfigured(): boolean {
+  return Boolean(getVercelApiToken() && getVercelProjectId());
+}

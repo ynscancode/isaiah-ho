@@ -73,6 +73,7 @@ const projects = defineCollection({
     endDate: z.string().nullable(),
     title: z.string(),
     body: z.string(),
+    detail: z.string().optional(),
     href: z.string().optional(),
   }),
 });
@@ -87,6 +88,7 @@ const experience = defineCollection({
     endDate: z.string().nullable(),
     title: z.string(),
     body: z.string(),
+    detail: z.string().optional(),
     href: z.string().optional(),
   }),
 });

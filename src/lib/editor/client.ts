@@ -110,7 +110,29 @@ export async function deleteBlogPost(slug: string): Promise<SaveResult> {
   return { ok: true };
 }
 
-export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSha: string } | null> {
+export type PreviewSyncState = 'synced' | 'already-current' | 'conflict';
+
+export type PreviewResult = {
+  previewUrl: string;
+  lastCommitSha: string;
+  /** The just-synced draft tip that was built. Pass to pollPreviewStatus()
+   * as a read-only correlation filter only — never a git ref/path
+   * (senior-backend-dev-20260720T052230). */
+  targetSha: string;
+  /** True only when the server has Vercel API polling configured
+   * (VERCEL_API_TOKEN + VERCEL_PROJECT_ID). When false, no per-deployment
+   * status is available — callers must fall back to the alias `previewUrl`
+   * with honest "~30s" messaging (tech-lead-20260720T051536 graceful
+   * degradation). */
+  pollable: boolean;
+  syncState: PreviewSyncState;
+};
+
+/** POST /api/draft/preview — session+CSRF gated, triggers an on-demand
+ * preview build. Response contract per senior-backend-dev-20260720T052230.
+ * Returns null on failure (caller shows "no draft yet" / retry messaging;
+ * never a false "ready"). */
+export async function fetchPreview(): Promise<PreviewResult | null> {
   // POST + CSRF token: the endpoint now triggers an on-demand build, so it's
   // a CSRF-checked mutation (see src/pages/api/draft/preview.ts). Mirrors the
   // header + reauth handling of the other mutating calls above.
@@ -124,6 +146,22 @@ export async function fetchPreview(): Promise<{ previewUrl: string; lastCommitSh
     return null;
   }
   return res.json();
+}
+
+export type PreviewStatus =
+  | { pollable: false; state: 'UNKNOWN' }
+  | { pollable: true; state: 'QUEUED' | 'BUILDING' | 'ERROR' | 'READY'; url?: string };
+
+/** GET /api/draft/preview-status?targetSha=... — session-gated, no CSRF
+ * (pure read, mirrors fetchHistory()). Returns null only on an unexpected
+ * network/parse failure (the two expected/documented shapes above are both
+ * still 200s and returned as-is) — caller should treat null the same as a
+ * poll attempt that didn't resolve anything (keep polling / eventually
+ * time out), never as a false "ready". */
+export async function pollPreviewStatus(targetSha: string): Promise<PreviewStatus | null> {
+  const res = await fetch(`/api/draft/preview-status?targetSha=${encodeURIComponent(targetSha)}`);
+  if (!res.ok) return null;
+  return parseJsonSafe<PreviewStatus>(res);
 }
 
 // --- Item 4: version history / revert (tech-lead-20260718T082028 §E) ---
@@ -342,30 +380,31 @@ if (typeof window !== 'undefined') {
 }
 
 export type Autosaver = {
-  /** Call on every field change. Marks the area dirty, (re)starts the
-   * debounce timer, and — if a save is already in flight — schedules
-   * exactly one trailing re-save once it resolves (never drops the last
-   * edit, never runs two saves concurrently for the same area). */
-  schedule: () => void;
-  /** Call from the Save button / `editor:save-all` path: cancels any
-   * pending debounce and saves now (still single-flight safe). Returns a
-   * promise so callers that need to know when the save (and any trailing
-   * re-save chained onto it) has settled can await it. */
+  /** Call on every field change (continuous typing). Marks the area dirty
+   * (registers it in `unsavedAreas` for the beforeunload guard) and clears
+   * any pending transient-failure retry timer. Starts NO timer and NEVER
+   * calls `runSave` — this is commit-on-blur, not commit-on-pause. The
+   * actual git commit happens only via `flush()` (tech-lead-20260720T041354
+   * save-trigger redesign). */
+  markDirty: () => void;
+  /** Call from a discrete-commit event (field blur, `<select>` change,
+   * picker/prompt confirm, undo/redo apply, the Save button /
+   * `editor:save-all` path): saves now (single-flight safe). This is the
+   * SOLE git-commit trigger. Returns a promise so callers that need to know
+   * when the save (and any trailing re-save chained onto it) has settled
+   * can await it. */
   flush: () => Promise<void>;
 };
 
 export function makeAutosaver({
   save,
-  debounceMs = 1500,
 }: {
   /** Must build its payload from CURRENT working state at call time — the
    * autosaver may call this again for a trailing re-save after the working
    * state has changed further. Return the existing SaveResult contract. */
   save: () => Promise<SaveResult>;
-  debounceMs?: number;
 }): Autosaver {
   const id = autosaverIdSeq++;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
   let pendingResave = false;
@@ -450,8 +489,8 @@ export function makeAutosaver({
       setStatus('error', { silent: true });
     } else {
       // Generic/other failure: surface it and leave the area dirty so the
-      // next edit (schedule()) or the Save button / editor:save-all
-      // (flush()) retries — a failed background save is never silently lost.
+      // next blur/commit (flush()) or the Save button / editor:save-all
+      // retries — a failed background save is never silently lost.
       setStatus('error');
     }
 
@@ -461,24 +500,15 @@ export function makeAutosaver({
     }
   }
 
-  function schedule() {
+  function markDirty() {
     setStatus('dirty');
     clearRetryTimer();
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = undefined;
-      void runSave();
-    }, debounceMs);
   }
 
   async function flush(): Promise<void> {
     clearRetryTimer();
-    if (timer) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
     await runSave();
   }
 
-  return { schedule, flush };
+  return { markDirty, flush };
 }

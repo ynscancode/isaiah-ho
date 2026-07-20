@@ -13,7 +13,7 @@ const bodyHtml = bodyToHtml(about.body ?? '');
   title="About"
   description="About Isaiah Ho — business student at Singapore Management University, building toward strategy and management consulting."
 >
-  <Band variant="ink" eyebrow="01 — About">
+  <Band variant="ink">
     <h1>About</h1>
     <div class:list={["about-layout", { "about-layout--text-only": !about.image }]}>
       <div class="prose" set:html={bodyHtml} />

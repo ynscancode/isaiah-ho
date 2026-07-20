@@ -143,6 +143,7 @@ export const projectEntrySchema = z.object({
   endDate: optDate,
   title: z.string().max(300),
   body: z.string().max(5000),
+  detail: z.string().max(5000).optional(),
   href: z.string().max(2048).optional(),
 });
 

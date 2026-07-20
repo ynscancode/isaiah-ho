@@ -11,6 +11,7 @@ export type CollectionEntry = {
   title: string;
   body: string;
   href?: string;
+  detail?: string;
 };
 
 export type Props = {
@@ -36,6 +37,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           title={entry.title}
           body={entry.body}
           href={entry.href}
+          detail={entry.detail}
           editable
           editablePrefix={entry.id}
           removable
@@ -88,6 +90,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
     title: string;
     body: string;
     href?: string;
+    detail?: string;
   };
 
   const list = document.querySelector<HTMLElement>('[data-collection-list]');
@@ -130,7 +133,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           const entry = working.get(target.id);
           if (!entry) return;
           (entry as unknown as Record<string, unknown>)[target.field] = el.textContent ?? '';
-          autosaver.schedule();
+          autosaver.markDirty();
         });
 
         const target = fieldOf(el);
@@ -147,10 +150,17 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
             onApply: (value) => {
               const entry = working.get(target.id);
               if (entry) (entry as unknown as Record<string, unknown>)[target.field] = value;
-              autosaver.schedule();
+              void autosaver.flush(); // undo/redo apply
             },
           });
         }
+
+        // commit(historyId) (wireField's own blur listener above) runs
+        // first; this second blur listener (registered after) fires next
+        // and performs the actual git-commit flush.
+        el.addEventListener('blur', () => {
+          void autosaver.flush();
+        });
       });
 
       // native date pickers (startDate/endDate)
@@ -161,7 +171,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           const entry = working.get(target.id);
           if (!entry) return;
           (entry as unknown as Record<string, unknown>)[target.field] = el.value.length > 0 ? el.value : null;
-          autosaver.schedule();
+          autosaver.markDirty();
         });
 
         const target = fieldOf(el);
@@ -178,10 +188,16 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
             onApply: (value) => {
               const entry = working.get(target.id);
               if (entry) (entry as unknown as Record<string, unknown>)[target.field] = value.length > 0 ? value : null;
-              autosaver.schedule();
+              void autosaver.flush(); // undo/redo apply
             },
           });
         }
+
+        // commit(historyId) (wireField's own blur listener above) runs
+        // first; this second blur listener (registered after) fires next.
+        el.addEventListener('blur', () => {
+          void autosaver.flush();
+        });
       });
 
       slot.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
@@ -197,7 +213,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
           entry.href = value.length > 0 ? value : undefined;
           const valueEl = slot.querySelector('[data-editable-href-value]');
           if (valueEl) valueEl.textContent = value.length > 0 ? value : '(none)';
-          autosaver.schedule();
+          void autosaver.flush(); // prompt confirm — discrete commit
 
           const historyId = `${areaName}:${target.id}.href`;
           register({
@@ -208,7 +224,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
               if (e) e.href = v.length > 0 ? v : undefined;
               const vEl = slot.querySelector('[data-editable-href-value]');
               if (vEl) vEl.textContent = v.length > 0 ? v : '(none)';
-              autosaver.schedule();
+              void autosaver.flush(); // undo/redo apply
             },
           });
           commitAtomic(historyId, current, value);
@@ -224,7 +240,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         slot.remove();
         historyIds.forEach((historyId) => unregister(historyId));
         if (entryId) unregister(`${areaName}:${entryId}.href`);
-        autosaver.schedule();
+        void autosaver.flush(); // deletion — discrete commit
       });
     }
 
@@ -259,10 +275,11 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         endDate: null,
         title: '',
         body: '',
+        detail: '',
       };
       working.set(id, newEntry);
       wireSlot(slot);
-      autosaver.schedule();
+      void autosaver.flush(); // add-entry click — discrete commit
 
       const categoryEl = slot.querySelector<HTMLElement>('[data-editable$=".category"]');
       categoryEl?.focus();
@@ -289,7 +306,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
 
       emptyStateEl.addEventListener('input', () => {
         workingEmptyStates[areaName] = emptyStateEl.value;
-        emptyStatesAutosaver.schedule();
+        emptyStatesAutosaver.markDirty();
       });
 
       wireField({
@@ -301,8 +318,14 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         },
         onApply: (value) => {
           workingEmptyStates[areaName] = value;
-          emptyStatesAutosaver.schedule();
+          void emptyStatesAutosaver.flush(); // undo/redo apply
         },
+      });
+
+      // commit(historyId) (wireField's own blur listener above) runs first;
+      // this second blur listener (registered after) fires next.
+      emptyStateEl.addEventListener('blur', () => {
+        void emptyStatesAutosaver.flush();
       });
 
       window.addEventListener('editor:save-all', () => {

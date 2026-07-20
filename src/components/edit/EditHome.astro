@@ -163,7 +163,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
         el.textContent = value;
       }
       setPath(working as unknown as Record<string, unknown>, path, value);
-      autosaver.schedule();
+      void autosaver.flush(); // undo/redo apply — no following blur, must commit now
     }
 
     container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
@@ -185,9 +185,12 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       el.addEventListener('input', () => {
         const value = readEl(el);
         setPath(working as unknown as Record<string, unknown>, path, value);
-        autosaver.schedule();
+        autosaver.markDirty();
       });
-      el.addEventListener('blur', () => commit(historyId));
+      el.addEventListener('blur', () => {
+        commit(historyId);
+        void autosaver.flush();
+      });
     });
 
     container.querySelectorAll<HTMLButtonElement>('[data-editable-href]').forEach((btn) => {
@@ -201,7 +204,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
         setPath(working as unknown as Record<string, unknown>, path, value);
         const anchor = btn.previousElementSibling as HTMLAnchorElement | null;
         if (anchor) anchor.setAttribute('href', value);
-        autosaver.schedule();
+        void autosaver.flush(); // prompt confirm — discrete commit
 
         const historyId = `home:${path}`;
         register({
@@ -211,7 +214,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
             setPath(working as unknown as Record<string, unknown>, path, v);
             const a = btn.previousElementSibling as HTMLAnchorElement | null;
             if (a) a.setAttribute('href', v);
-            autosaver.schedule();
+            void autosaver.flush(); // undo/redo apply
           },
         });
         commitAtomic(historyId, current, value);

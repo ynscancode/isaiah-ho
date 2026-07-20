@@ -8,7 +8,7 @@ export type Props = {
 const { about } = Astro.props;
 ---
 
-<Band variant="ink" eyebrow="01 — About" as="div">
+<Band variant="ink" eyebrow="About" as="div">
   <h1>About</h1>
 
   <label class="editor-field-label mono" for="about-image-input">Profile photo</label>
@@ -94,7 +94,7 @@ const { about } = Astro.props;
 
     bodyEl.addEventListener('input', () => {
       working.body = bodyEl.value;
-      autosaver.schedule();
+      autosaver.markDirty();
     });
 
     wireField({
@@ -106,8 +106,15 @@ const { about } = Astro.props;
       },
       onApply: (value) => {
         working.body = value;
-        autosaver.schedule();
+        void autosaver.flush(); // undo/redo apply — no following blur
       },
+    });
+
+    // commit(historyId) (undo-step boundary, inside wireField's own blur
+    // listener above) must run before flush() — registering this AFTER
+    // wireField() guarantees DOM listener order fires commit first.
+    bodyEl.addEventListener('blur', () => {
+      void autosaver.flush();
     });
 
     window.addEventListener('editor:save-all', () => {

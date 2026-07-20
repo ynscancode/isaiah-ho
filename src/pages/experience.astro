@@ -15,7 +15,7 @@ const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
   title="Experience"
   description="Work history and leadership experience by Isaiah Ho."
 >
-  <Band variant="paper" eyebrow="02 — Work history">
+  <Band variant="paper">
     <h1>Experience</h1>
     {
       experience.length > 0 ? (
@@ -27,6 +27,7 @@ const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
                 title={exp.data.title}
                 body={exp.data.body}
                 href={exp.data.href}
+                detail={exp.data.detail}
               />
             </div>
           ))}

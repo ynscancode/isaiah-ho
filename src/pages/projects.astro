@@ -15,7 +15,7 @@ const emptyStateText = emptyStatesEntry?.data.projects ?? 'Coming soon.';
   title="Projects"
   description="Case competitions, research, and independent projects by Isaiah Ho."
 >
-  <Band variant="paper" eyebrow="03 — Selected work">
+  <Band variant="paper">
     <h1>Projects</h1>
     {
       projects.length > 0 ? (
@@ -27,6 +27,7 @@ const emptyStateText = emptyStatesEntry?.data.projects ?? 'Coming soon.';
                 title={project.data.title}
                 body={project.data.body}
                 href={project.data.href}
+                detail={project.data.detail}
               />
             </div>
           ))}
