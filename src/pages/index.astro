@@ -8,17 +8,56 @@ import Card from '../components/Card.astro';
 import { deriveEyebrow } from '../lib/eyebrow';
 
 const allProjects = await getCollection('projects');
-const selectedProjects = allProjects.slice(0, 2);
+const allPosts = await getCollection('blog', ({ data }) => !data.draft);
 
 const homeEntry = await getEntry('site', 'home');
 const hero = homeEntry!.data.hero!;
 
-const allPosts = await getCollection('blog', ({ data }) => !data.draft);
-const latestPosts = allPosts
-  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
-  .slice(0, 2);
-
 const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
+
+// Homepage Highlights (tech-lead-20260720T113459Z / ui-ux-designer-
+// 20260720T120500Z) — a user-curated, manually-ordered mix of projects +
+// blog posts, replacing the two auto-recency Bands below. Refs are NEVER
+// copied titles; resolve against the live collections IN ORDER, and
+// fail-soft: a ref that no longer resolves (deleted project, deleted/
+// draft:true post) is silently skipped — never a build error, never a
+// broken card (AC7 public side).
+const rawHighlights = Array.isArray(homeEntry?.data.highlights) ? homeEntry.data.highlights : [];
+type ResolvedHighlight =
+  | { kind: 'project'; eyebrow: string; title: string; body: string; href: string }
+  | { kind: 'blog'; eyebrow: string; title: string; body: string; href: string; tags: string[] };
+
+const highlights: ResolvedHighlight[] = [];
+for (const ref of rawHighlights) {
+  if (ref.type === 'project') {
+    const project = allProjects.find((p) => p.data.slug === ref.ref);
+    if (!project) continue;
+    highlights.push({
+      kind: 'project',
+      eyebrow: `PROJECT · ${deriveEyebrow(project.data.category, project.data.startDate, project.data.endDate)}`,
+      title: project.data.title,
+      body: project.data.body,
+      href: `/projects/${project.data.slug}`,
+    });
+  } else if (ref.type === 'blog') {
+    const post = allPosts.find((p) => p.id === ref.ref);
+    if (!post) continue;
+    highlights.push({
+      kind: 'blog',
+      eyebrow: `POST · ${dateFormatter.format(post.data.date).toUpperCase()}`,
+      title: post.data.title,
+      body: post.data.description,
+      href: `/blog/${post.id}`,
+      tags: post.data.tags,
+    });
+  }
+}
+
+const emptyStatesEntry = await getEntry('site', 'emptyStates');
+const highlightsEmptyText =
+  typeof emptyStatesEntry?.data.highlights === 'string'
+    ? emptyStatesEntry.data.highlights
+    : 'No highlights selected yet — check back soon.';
 ---
 
 <BaseLayout
@@ -35,46 +74,23 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     <HeroGraphic slot="matrix" default={hero.graphic ?? 'synthesis'} />
   </Hero>
 
-  <Band variant="paper" eyebrow="Selected work">
-    <h2>Projects</h2>
+  <Band variant="paper" eyebrow="Highlights">
+    <h2>Highlights</h2>
     {
-      selectedProjects.length > 0 ? (
+      highlights.length > 0 ? (
         <div class="cards">
-          {selectedProjects.map((project) => (
+          {highlights.map((item) => (
             <Card
-              eyebrow={deriveEyebrow(project.data.category, project.data.startDate, project.data.endDate)}
-              title={project.data.title}
-              body={project.data.body}
-              href={`/projects#${project.data.slug}`}
+              eyebrow={item.eyebrow}
+              title={item.title}
+              body={item.body}
+              href={item.href}
+              tags={item.kind === 'blog' ? item.tags : undefined}
             />
           ))}
         </div>
       ) : (
-        <p class="empty-state">
-          {/* TODO(isaiah): add projects to src/data/projects.json — this empty state renders until you do. */}
-          No projects yet — check back soon.
-        </p>
-      )
-    }
-  </Band>
-
-  <Band variant="paper" divider eyebrow="Latest writing">
-    <h2>From the blog</h2>
-    {
-      latestPosts.length > 0 ? (
-        <div class="cards">
-          {latestPosts.map((post) => (
-            <Card
-              eyebrow={dateFormatter.format(post.data.date).toUpperCase()}
-              title={post.data.title}
-              body={post.data.description}
-              href={`/blog/${post.id}`}
-              tags={post.data.tags}
-            />
-          ))}
-        </div>
-      ) : (
-        <p class="empty-state">No posts yet — check back soon.</p>
+        <p class="empty-state">{highlightsEmptyText}</p>
       )
     }
   </Band>

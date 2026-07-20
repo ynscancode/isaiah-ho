@@ -3,6 +3,22 @@ import Hero from '../Hero.astro';
 import HeroGraphic from '../hero/HeroGraphic.astro';
 import { HERO_VARIANTS, DEFAULT_HERO_VARIANT, type HeroVariant } from '../../lib/heroVariants';
 
+// Homepage Highlights (tech-lead-20260720T113459Z / ui-ux-designer-
+// 20260720T120500Z). A ref is NEVER a copied title — always `{type, ref}`,
+// resolved against `projectsPool`/`blogPool` (loaded by the edit route at
+// the SAME draft freshness as the public/preview resolution, KB-0020). The
+// selection UI lives below the hero-graphic picker, in a bordered box
+// matching its visual language (no new box style).
+export type HighlightRef = { type: 'project' | 'blog'; ref: string };
+export type HighlightsProjectPoolItem = {
+  slug: string;
+  title: string;
+  category: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+export type HighlightsBlogPoolItem = { id: string; title: string; date: string };
+
 export type Props = {
   hero: {
     eyebrow: string;
@@ -12,10 +28,30 @@ export type Props = {
     ghostCta: { label: string; href: string };
     graphic?: HeroVariant;
   };
+  highlights: HighlightRef[];
+  projectsPool: HighlightsProjectPoolItem[];
+  blogPool: HighlightsBlogPoolItem[];
+  // NOTE (senior-frontend-dev-20260720): the edit route currently passes a
+  // single `highlightsEmptyText` string (senior-backend-dev-20260720T114131Z
+  // prop contract), NOT the full 5-field emptyStates record every other
+  // Edit* component round-trips on save (EditContact/EditCollection/
+  // EditBlogList all spread `{...seedEmptyStates}` and POST all 5 fields,
+  // since `emptyStatesBodySchema` requires every key). A save built from
+  // ONLY `highlights` would either fail validation (missing fields) or, if
+  // defaulted, silently clobber the other four saved empty-state messages.
+  // Accepting BOTH shapes here (full record preferred, string as a
+  // fallback-only display value with save DISABLED) so this never crashes
+  // or corrupts data before the route is aligned — see team board for the
+  // one-line fix requested of senior-backend-dev.
+  emptyStates?: { projects: string; experience: string; blog: string; contact: string; highlights: string };
+  highlightsEmptyText?: string;
 };
 
-const { hero } = Astro.props;
+const { hero, highlights, projectsPool, blogPool, emptyStates, highlightsEmptyText } = Astro.props;
+const resolvedEmptyStates = emptyStates ?? null;
+const highlightsEmptyValue = resolvedEmptyStates?.highlights ?? highlightsEmptyText ?? '';
 const currentGraphic: HeroVariant = hero.graphic ?? DEFAULT_HERO_VARIANT;
+const HIGHLIGHTS_CAP = 6;
 
 // Human labels for the picker buttons.
 const GRAPHIC_LABELS: Record<HeroVariant, string> = {
@@ -61,18 +97,84 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     <p class="graphic-picker-status mono" data-graphic-status aria-live="polite"></p>
   </div>
 
+  <div class="graphic-picker highlights-picker" role="group" aria-label="Highlights">
+    <div class="graphic-picker-head">
+      <span class="graphic-picker-title mono">Highlights</span>
+      <span class="graphic-picker-hint">Pick the projects and posts shown on the homepage, and the order they appear in (up to {HIGHLIGHTS_CAP}).</span>
+    </div>
+
+    <div class="highlights-section">
+      <h3 class="highlights-subhead mono">Selected</h3>
+      <ol class="highlights-list" data-highlights-selected aria-label="Selected highlights, in display order"></ol>
+      <p class="editor-note" data-highlights-empty-note hidden>Nothing selected yet — add from the pool below.</p>
+    </div>
+
+    <div class="highlights-section">
+      <h3 class="highlights-subhead mono">Add more</h3>
+      <p class="highlights-cap-note mono" data-highlights-cap-note hidden>Highlights is at its limit ({HIGHLIGHTS_CAP}) — remove one to add another.</p>
+      <ul class="highlights-pool" data-highlights-pool></ul>
+      <p class="editor-note" data-highlights-pool-empty hidden>Every project and post is already selected.</p>
+    </div>
+
+    <hr class="editor-divider" />
+    <label class="editor-field-label mono" for="home-highlights-empty-state-text">Empty-state message</label>
+    <input
+      id="home-highlights-empty-state-text"
+      class="editor-input"
+      type="text"
+      value={highlightsEmptyValue}
+      readonly={resolvedEmptyStates === null}
+      data-highlights-empty-savable={resolvedEmptyStates !== null ? 'true' : 'false'}
+    />
+    <p class="editor-note">Shown on the public homepage in place of the grid when zero highlights are selected.</p>
+    {resolvedEmptyStates === null && (
+      <p class="editor-note">
+        Read-only for now — saving this message needs a small backend update (see team board). Your other
+        empty-state messages are unaffected.
+      </p>
+    )}
+  </div>
+
   <p class="editor-note">
     Page navigation and footer are not editable in this MVP
     (see product-owner-20260716T000000 on the team board).
   </p>
 </div>
 
+<script define:vars={{ seedHighlights: highlights, seedProjectsPool: projectsPool, seedBlogPool: blogPool, seedEmptyStates: resolvedEmptyStates }}>
+  window.__editorSeed = window.__editorSeed || {};
+  window.__editorSeed.highlights = seedHighlights;
+  window.__editorSeed.projectsPool = seedProjectsPool;
+  window.__editorSeed.blogPool = seedBlogPool;
+  // null until the edit route passes the full 5-field emptyStates record —
+  // see the Props comment above. The empty-state text field stays
+  // read-only (no save wiring) while this is null, so partial data can
+  // never clobber the other four saved empty-state messages.
+  window.__editorSeed.emptyStates = seedEmptyStates;
+</script>
+
 <script>
   import { getPath, makeAutosaver, saveArea, sanitizeHeadlineHtml, setPath } from '../../lib/editor/client';
   import { commit, commitAtomic, register } from '../../lib/editor/history';
+  import type {
+    HighlightRef,
+    HighlightsProjectPoolItem,
+    HighlightsBlogPoolItem,
+  } from './EditHome.astro';
 
   const AREA = 'home';
   const container = document.querySelector<HTMLElement>('[data-editable-area="home"]');
+
+  const editorSeed = (
+    window as unknown as {
+      __editorSeed: {
+        highlights: HighlightRef[];
+        projectsPool: HighlightsProjectPoolItem[];
+        blogPool: HighlightsBlogPoolItem[];
+      };
+    }
+  ).__editorSeed;
+
   if (container) {
     const seed = {
       eyebrow: container.querySelector<HTMLElement>('[data-editable="eyebrow"]')?.textContent ?? '',
@@ -91,6 +193,12 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       // "Use this graphic" confirm below, so merely previewing a variant
       // does not mutate this and does not trigger a save (no history bloat).
       graphic: container.getAttribute('data-current-graphic') ?? 'synthesis',
+      // Ordered {type, ref} array (tech-lead-20260720T113459Z). Included in
+      // EVERY home save alongside the hero fields — same "never drop the
+      // other's field" discipline as `graphic` above — so a hero text
+      // autosave never clobbers a highlights add/remove/move and vice
+      // versa (they're one payload, one POST /api/content/home body).
+      highlights: editorSeed.highlights,
     };
 
     const working: typeof seed = JSON.parse(JSON.stringify(seed));
@@ -221,8 +329,233 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       });
     });
 
+    // ---- Highlights selection (tech-lead-20260720T113459Z / ui-ux-
+    // designer-20260720T120500Z) ----
+    // Buttons only (no drag/checkbox, KB-0026) — every add/remove/move
+    // click mutates `working.highlights` then flushes UNCONDITIONALLY
+    // (discrete-commit site, like EditContact's link add/remove — NOT
+    // routed through markDirty/flushIfDirty, since these are buttons, not
+    // text fields). Titles are ALWAYS resolved from projectsPool/blogPool,
+    // NEVER stored — the row is rebuilt via createElement/textContent only
+    // (no innerHTML with pool-sourced text), so a title containing
+    // HTML-like characters can never become a markup injection.
+    const HIGHLIGHTS_CAP = 6;
+    const projectsPool = editorSeed.projectsPool;
+    const blogPool = editorSeed.blogPool;
+    const selectedListEl = container.querySelector<HTMLOListElement>('[data-highlights-selected]');
+    const selectedEmptyNoteEl = container.querySelector<HTMLElement>('[data-highlights-empty-note]');
+    const poolListEl = container.querySelector<HTMLUListElement>('[data-highlights-pool]');
+    const poolEmptyNoteEl = container.querySelector<HTMLElement>('[data-highlights-pool-empty]');
+    const capNoteEl = container.querySelector<HTMLElement>('[data-highlights-cap-note]');
+
+    function resolveHighlight(ref: HighlightRef): { title: string; typeLabel: string; metaLabel: string } | null {
+      if (ref.type === 'project') {
+        const p = projectsPool.find((item) => item.slug === ref.ref);
+        return p ? { title: p.title, typeLabel: 'Project', metaLabel: p.category } : null;
+      }
+      const b = blogPool.find((item) => item.id === ref.ref);
+      return b ? { title: b.title, typeLabel: 'Post', metaLabel: b.date } : null;
+    }
+
+    function renderHighlights() {
+      if (!selectedListEl || !poolListEl) return;
+      const total = working.highlights.length;
+      const atCap = total >= HIGHLIGHTS_CAP;
+
+      selectedListEl.innerHTML = '';
+      working.highlights.forEach((ref, index) => {
+        selectedListEl.appendChild(buildSelectedRow(ref, index, total));
+      });
+      if (selectedEmptyNoteEl) selectedEmptyNoteEl.hidden = total > 0;
+      if (capNoteEl) capNoteEl.hidden = !atCap;
+
+      const selectedKeys = new Set(working.highlights.map((h) => `${h.type}:${h.ref}`));
+      const availableProjects = projectsPool.filter((p) => !selectedKeys.has(`project:${p.slug}`));
+      const availableBlog = blogPool.filter((b) => !selectedKeys.has(`blog:${b.id}`));
+
+      poolListEl.innerHTML = '';
+      for (const p of availableProjects) {
+        poolListEl.appendChild(
+          buildPoolRow({ type: 'project', ref: p.slug, title: p.title, metaLabel: `Project · ${p.category}` }, atCap)
+        );
+      }
+      for (const b of availableBlog) {
+        poolListEl.appendChild(
+          buildPoolRow({ type: 'blog', ref: b.id, title: b.title, metaLabel: `Post · ${b.date}` }, atCap)
+        );
+      }
+      if (poolEmptyNoteEl) poolEmptyNoteEl.hidden = availableProjects.length + availableBlog.length > 0;
+    }
+
+    function commitHighlights() {
+      renderHighlights();
+      void autosaver.flush(); // add/remove/move click — discrete commit, always saves
+    }
+
+    function buildSelectedRow(ref: HighlightRef, index: number, total: number): HTMLLIElement {
+      const li = document.createElement('li');
+      li.className = 'highlights-row';
+
+      const posSpan = document.createElement('span');
+      posSpan.className = 'highlights-position mono';
+      posSpan.textContent = `#${index + 1}`;
+      li.appendChild(posSpan);
+
+      const resolved = resolveHighlight(ref);
+
+      if (!resolved) {
+        const missing = document.createElement('span');
+        missing.className = 'highlights-missing';
+        missing.textContent = '(missing — this was deleted, remove it?)';
+        li.appendChild(missing);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'card-remove-btn highlights-remove-btn';
+        removeBtn.textContent = 'Remove';
+        removeBtn.setAttribute('aria-label', 'Remove this missing highlight');
+        removeBtn.addEventListener('click', () => {
+          working.highlights.splice(index, 1);
+          commitHighlights();
+        });
+        li.appendChild(removeBtn);
+        return li;
+      }
+
+      const typeSpan = document.createElement('span');
+      typeSpan.className = 'highlights-type mono';
+      typeSpan.textContent = resolved.typeLabel;
+      li.appendChild(typeSpan);
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'highlights-item-title';
+      titleSpan.textContent = resolved.title;
+      li.appendChild(titleSpan);
+
+      const controls = document.createElement('span');
+      controls.className = 'highlights-row-controls';
+
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.className = 'highlights-move-btn';
+      upBtn.textContent = 'Move up';
+      upBtn.setAttribute('aria-label', `Move ${resolved.title} up`);
+      upBtn.disabled = index === 0;
+      upBtn.addEventListener('click', () => {
+        if (index === 0) return;
+        const [item] = working.highlights.splice(index, 1);
+        working.highlights.splice(index - 1, 0, item);
+        commitHighlights();
+      });
+      controls.appendChild(upBtn);
+
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.className = 'highlights-move-btn';
+      downBtn.textContent = 'Move down';
+      downBtn.setAttribute('aria-label', `Move ${resolved.title} down`);
+      downBtn.disabled = index === total - 1;
+      downBtn.addEventListener('click', () => {
+        if (index === total - 1) return;
+        const [item] = working.highlights.splice(index, 1);
+        working.highlights.splice(index + 1, 0, item);
+        commitHighlights();
+      });
+      controls.appendChild(downBtn);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'card-remove-btn highlights-remove-btn';
+      removeBtn.textContent = 'Remove';
+      removeBtn.setAttribute('aria-label', `Remove ${resolved.title}`);
+      removeBtn.addEventListener('click', () => {
+        working.highlights.splice(index, 1);
+        commitHighlights();
+      });
+      controls.appendChild(removeBtn);
+
+      li.appendChild(controls);
+      return li;
+    }
+
+    function buildPoolRow(
+      item: { type: HighlightRef['type']; ref: string; title: string; metaLabel: string },
+      atCap: boolean
+    ): HTMLLIElement {
+      const li = document.createElement('li');
+      li.className = 'highlights-pool-row';
+
+      const info = document.createElement('span');
+      info.className = 'highlights-pool-info';
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'highlights-pool-title';
+      titleSpan.textContent = item.title;
+      const metaSpan = document.createElement('span');
+      metaSpan.className = 'highlights-pool-meta mono';
+      metaSpan.textContent = item.metaLabel;
+      info.append(titleSpan, metaSpan);
+      li.appendChild(info);
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'editor-add-btn highlights-add-btn';
+      addBtn.textContent = '+ Add';
+      addBtn.disabled = atCap;
+      addBtn.setAttribute('aria-label', `Add ${item.title} to Highlights`);
+      addBtn.addEventListener('click', () => {
+        if (working.highlights.length >= HIGHLIGHTS_CAP) return;
+        working.highlights.push({ type: item.type, ref: item.ref });
+        commitHighlights();
+      });
+      li.appendChild(addBtn);
+      return li;
+    }
+
+    renderHighlights();
+
     window.addEventListener('editor:save-all', () => {
       void autosaver.flush();
+    });
+  }
+
+  // ---- Highlights empty-state message (product-owner-20260717T200000
+  // Decision 3 pattern, extended by tech-lead-20260720T113459Z to a 5th
+  // `highlights` key on the shared emptyStatesBodySchema) ----
+  // Only wired up to autosave when the route supplied the FULL 5-field
+  // record (see the Props/define:vars comments above) — every OTHER
+  // emptyStates-writing editor round-trips all 5 fields on every save
+  // (emptyStatesBodySchema requires them all), so saving from a partial
+  // object here would either 400 (validation_failed) or, if defaulted,
+  // silently wipe the other four saved empty-state messages. The field
+  // itself stays visible (read-only) either way so the current value is
+  // never hidden from Isaiah.
+  const highlightsEmptyStateEl = document.getElementById('home-highlights-empty-state-text') as HTMLInputElement | null;
+  const seedEmptyStates = (
+    window as unknown as {
+      __editorSeed: {
+        emptyStates: { projects: string; experience: string; blog: string; contact: string; highlights: string } | null;
+      };
+    }
+  ).__editorSeed?.emptyStates ?? null;
+
+  if (highlightsEmptyStateEl && seedEmptyStates) {
+    const workingEmptyStates = { ...seedEmptyStates };
+
+    const emptyStatesAutosaver = makeAutosaver({
+      save: () => saveArea('emptyStates', workingEmptyStates),
+    });
+
+    highlightsEmptyStateEl.addEventListener('input', () => {
+      workingEmptyStates.highlights = highlightsEmptyStateEl.value;
+      emptyStatesAutosaver.markDirty();
+    });
+
+    highlightsEmptyStateEl.addEventListener('blur', () => {
+      void emptyStatesAutosaver.flushIfDirty();
+    });
+
+    window.addEventListener('editor:save-all', () => {
+      void emptyStatesAutosaver.flush();
     });
   }
 </script>
@@ -332,5 +665,135 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     min-height: 1.1em;
     font-size: 0.76rem;
     color: var(--signal-text, #8a5a00);
+  }
+
+  .highlights-picker {
+    margin-top: 1.5rem;
+  }
+
+  .highlights-section {
+    margin-top: 1.1rem;
+  }
+
+  .highlights-section:first-of-type {
+    margin-top: 0;
+  }
+
+  .highlights-subhead {
+    margin: 0 0 0.6rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--slate, #5b6472);
+  }
+
+  .highlights-list,
+  .highlights-pool {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .highlights-pool {
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+
+  .highlights-row,
+  .highlights-pool-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    border: 1px solid var(--line, #d8d3c7);
+    border-radius: 4px;
+    padding: 0.6rem 0.8rem;
+    background: #fff;
+  }
+
+  .highlights-position {
+    font-size: 0.72rem;
+    color: var(--slate, #5b6472);
+    min-width: 1.6rem;
+  }
+
+  .highlights-type {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--signal-text, #8a5a00);
+  }
+
+  .highlights-item-title {
+    flex: 1 1 12rem;
+    font-size: 0.92rem;
+  }
+
+  .highlights-missing {
+    flex: 1 1 12rem;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--slate, #5b6472);
+  }
+
+  .highlights-row-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-left: auto;
+  }
+
+  .highlights-move-btn {
+    font-size: 0.72rem;
+    color: var(--ink, #12182b);
+    background: #fff;
+    border: 1px solid var(--line, #d8d3c7);
+    border-radius: 4px;
+    padding: 0.35rem 0.55rem;
+    cursor: pointer;
+  }
+
+  .highlights-move-btn:hover:not(:disabled) {
+    border-color: var(--signal, #c87f0a);
+  }
+
+  .highlights-move-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .highlights-remove-btn {
+    position: static;
+  }
+
+  .highlights-pool-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1 1 12rem;
+  }
+
+  .highlights-pool-title {
+    font-size: 0.92rem;
+  }
+
+  .highlights-pool-meta {
+    font-size: 0.7rem;
+    color: var(--slate, #5b6472);
+  }
+
+  .highlights-add-btn {
+    margin-top: 0;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.78rem;
+  }
+
+  .highlights-cap-note {
+    font-size: 0.76rem;
+    color: var(--signal-text, #8a5a00);
+    margin: 0 0 0.6rem;
   }
 </style>

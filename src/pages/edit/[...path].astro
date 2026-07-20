@@ -66,17 +66,56 @@ function emptyStatesFrom(siteData: Record<string, any>) {
     experience: siteData.emptyStates?.experience ?? '',
     blog: siteData.emptyStates?.blog ?? '',
     contact: siteData.emptyStates?.contact ?? '',
+    // `highlights` is now a required field on emptyStatesBodySchema
+    // alongside the other four (schemas.ts). Every emptyStates-writing
+    // editor (Contact/Collection/BlogList) round-trips this WHOLE object on
+    // every save regardless of which single field it actually edits — that
+    // is the existing convention for the other four fields. Omitting this
+    // key here would either fail validation (missing required field) or, if
+    // relaxed to optional, silently clobber the highlights empty-state copy
+    // back to a default on every unrelated emptyStates save. Must stay a
+    // plain string (not the array branch of content.config.ts's union).
+    highlights:
+      typeof siteData.emptyStates?.highlights === 'string' ? siteData.emptyStates.highlights : '',
   };
 }
 
 if (segments.length === 0) {
-  const siteJson = await loadSiteJson();
+  // Highlights (tech-lead-20260720T113459Z section 5): the "add" pool and
+  // the Selected-row title resolution must read at the SAME draft freshness
+  // the editor writes at — otherwise the pool/titles here could disagree
+  // with what a save actually persists (the ARCH-0010/0020 write-only
+  // class). Load concurrently; this view didn't load collections before.
+  const [siteJson, projectsResult, blogResult] = await Promise.all([
+    loadSiteJson(),
+    loadCollectionJson('projects'),
+    loadBlogList(),
+  ]);
   contentSource = siteJson.source;
   const siteData = (siteJson.data ?? {}) as Record<string, any>;
   const hero = siteData.home?.hero;
   if (!hero) return notFound();
   pageTitle = 'Edit — Home';
-  body = { view: 'home', hero };
+  const highlights = Array.isArray(siteData.home?.highlights) ? siteData.home.highlights : [];
+  const projectsPool = (projectsResult.data as any[]).map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    category: p.category,
+    startDate: p.startDate,
+    endDate: p.endDate,
+  }));
+  // Non-draft only (PO AC1: drafts excluded from the pool).
+  const blogPool = blogResult.data
+    .filter((p) => !p.draft)
+    .map((p) => ({ id: p.slug, title: p.title, date: p.date }));
+  body = {
+    view: 'home',
+    hero,
+    highlights,
+    projectsPool,
+    blogPool,
+    emptyStates: emptyStatesFrom(siteData),
+  };
 } else if (area === 'about' && !sub) {
   const siteJson = await loadSiteJson();
   contentSource = siteJson.source;
@@ -182,7 +221,15 @@ if (segments.length === 0) {
 ---
 
 <BaseLayout title={pageTitle} description="Isaiah Ho — content editor (private).">
-  {body?.view === 'home' && <EditHome hero={body.hero} />}
+  {body?.view === 'home' && (
+    <EditHome
+      hero={body.hero}
+      highlights={body.highlights}
+      projectsPool={body.projectsPool}
+      blogPool={body.blogPool}
+      emptyStates={body.emptyStates}
+    />
+  )}
   {body?.view === 'about' && <EditAbout about={body.about} />}
   {body?.view === 'contact' && <EditContact contact={body.contact} emptyStates={body.emptyStates} />}
   {body?.view === 'projects' && (

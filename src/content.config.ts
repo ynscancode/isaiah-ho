@@ -60,6 +60,18 @@ const site = defineCollection({
     experience: z.string().optional(),
     blog: z.string().optional(),
     contact: z.string().optional(),
+    // "highlights" collides across two entries on this shared flat schema:
+    // the "home" entry stores an ORDERED ARRAY of refs, while the
+    // "emptyStates" entry stores a STRING (the editable empty-copy). Union
+    // both branches so neither entry gets its value stripped by zod's
+    // unknown-key stripping on read (tech-lead-20260720T113459Z 1c).
+    // Consumers narrow with Array.isArray() / typeof === 'string'.
+    highlights: z
+      .union([
+        z.array(z.object({ type: z.enum(['project', 'blog']), ref: z.string() })),
+        z.string(),
+      ])
+      .optional(),
   }),
 });
 
