@@ -111,7 +111,7 @@ const { contact, emptyStates } = Astro.props;
     });
 
     ledeEl.addEventListener('input', () => {
-      autosaver.schedule();
+      autosaver.markDirty();
     });
 
     wireField({
@@ -121,7 +121,13 @@ const { contact, emptyStates } = Astro.props;
       setValue: (value) => {
         ledeEl!.textContent = value;
       },
-      onApply: () => autosaver.schedule(),
+      onApply: () => void autosaver.flush(), // undo/redo apply
+    });
+
+    // commit(historyId) (wireField's own blur listener above) runs first;
+    // this second blur listener (registered after) fires next.
+    ledeEl.addEventListener('blur', () => {
+      void autosaver.flush();
     });
 
     function fieldOf(el: HTMLElement): { id: string; field: keyof ContactLink } | null {
@@ -154,10 +160,8 @@ const { contact, emptyStates } = Astro.props;
           valueEl.placeholder = entry.type === 'email' ? 'name@example.com' : 'https://...';
         }
         if (target) updateHint(target.id);
-        autosaver.schedule();
+        void autosaver.flush(); // <select> change (or undo/redo apply) — discrete commit
       }
-
-      typeEl?.addEventListener('change', () => applyTypeChange(true));
 
       labelEl?.addEventListener('input', () => {
         const target = fieldOf(labelEl);
@@ -165,7 +169,7 @@ const { contact, emptyStates } = Astro.props;
         const entry = working.get(target.id);
         if (!entry) return;
         entry.label = labelEl.value;
-        autosaver.schedule();
+        autosaver.markDirty();
       });
 
       valueEl?.addEventListener('input', () => {
@@ -173,28 +177,26 @@ const { contact, emptyStates } = Astro.props;
         if (!target) return;
         const entry = working.get(target.id);
         if (!entry) return;
-        const wasHeld = entry.value !== '' && !isPersistableContactValue(entry.type, entry.value);
         entry.value = valueEl.value;
+        // isPersistableContactValue hold-at-last-persisted logic (Design B,
+        // tech-lead-20260718T174921) stays: an incomplete mid-typed URL/email
+        // is never TRANSMITTED (see autosaver.save() above, which substitutes
+        // lastPersistedValue while held). The immediate-flush-on-becoming-
+        // persistable special case is removed — blur below now covers the
+        // just-finished value (tech-lead-20260720T041354).
         updateHint(target.id);
-        const nowPersistable = isPersistableContactValue(entry.type, entry.value);
-        if (wasHeld && nowPersistable) {
-          // Transition from "incomplete, held" to "plausibly complete" —
-          // flush immediately rather than waiting out the debounce, so a
-          // just-finished URL/email saves promptly.
-          void autosaver.flush();
-        } else {
-          autosaver.schedule();
-        }
-      });
-
-      valueEl?.addEventListener('blur', () => {
-        void autosaver.flush();
+        autosaver.markDirty();
       });
 
       // Item 5: per-field undo/redo for this row's controls. Structural
       // (add/remove-row) undo is deferred (tech-lead-20260718T082028 /
       // PO AC7) — unregister() below just makes a stale step for a removed
-      // row a safe no-op rather than corrupting `working`.
+      // row a safe no-op rather than corrupting `working`. Each wireField()
+      // call registers the field's own commit(historyId) listener (change
+      // for type, blur for label/value); the explicit change/blur→flush
+      // listener added right after each one fires SECOND (DOM listener
+      // order), so commit() always snapshots the undo step before flush()
+      // performs the git commit.
       const rowId = row.getAttribute('data-link-id');
       if (rowId && typeEl) {
         wireField({
@@ -207,6 +209,7 @@ const { contact, emptyStates } = Astro.props;
           onApply: () => applyTypeChange(false),
           commitEvent: 'change',
         });
+        typeEl.addEventListener('change', () => applyTypeChange(true));
       }
       if (rowId && labelEl) {
         wireField({
@@ -220,8 +223,11 @@ const { contact, emptyStates } = Astro.props;
             const target = fieldOf(labelEl);
             const entry = target && working.get(target.id);
             if (entry) entry.label = labelEl.value;
-            autosaver.schedule();
+            void autosaver.flush(); // undo/redo apply
           },
+        });
+        labelEl.addEventListener('blur', () => {
+          void autosaver.flush();
         });
       }
       if (rowId && valueEl) {
@@ -237,8 +243,11 @@ const { contact, emptyStates } = Astro.props;
             const entry = target && working.get(target.id);
             if (entry) entry.value = valueEl.value;
             if (target) updateHint(target.id);
-            autosaver.schedule();
+            void autosaver.flush(); // undo/redo apply
           },
+        });
+        valueEl.addEventListener('blur', () => {
+          void autosaver.flush();
         });
       }
 
@@ -253,7 +262,7 @@ const { contact, emptyStates } = Astro.props;
         unregister(`contact:link:${id}.type`);
         unregister(`contact:link:${id}.label`);
         unregister(`contact:link:${id}.value`);
-        autosaver.schedule();
+        void autosaver.flush(); // deletion — discrete commit
       });
     }
 
@@ -286,7 +295,7 @@ const { contact, emptyStates } = Astro.props;
       `;
       list.appendChild(row);
       wireRow(row);
-      autosaver.schedule();
+      void autosaver.flush(); // add-link click — discrete commit
 
       const typeEl = row.querySelector<HTMLSelectElement>('.contact-link-type');
       typeEl?.focus();
@@ -311,7 +320,7 @@ const { contact, emptyStates } = Astro.props;
 
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.contact = emptyStateEl.value;
-      emptyStatesAutosaver.schedule();
+      emptyStatesAutosaver.markDirty();
     });
 
     wireField({
@@ -323,8 +332,14 @@ const { contact, emptyStates } = Astro.props;
       },
       onApply: (value) => {
         workingEmptyStates.contact = value;
-        emptyStatesAutosaver.schedule();
+        void emptyStatesAutosaver.flush(); // undo/redo apply
       },
+    });
+
+    // commit(historyId) (wireField's own blur listener above) runs first;
+    // this second blur listener (registered after) fires next.
+    emptyStateEl.addEventListener('blur', () => {
+      void emptyStatesAutosaver.flush();
     });
 
     window.addEventListener('editor:save-all', () => {

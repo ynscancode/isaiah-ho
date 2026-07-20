@@ -13,9 +13,11 @@
 // fields, or an atomic action like a URL prompt) — NOT a keystroke. Undo/redo
 // apply the value back through the field's own `apply()`, which is expected
 // to write the DOM AND mark the owning autosaver's working state dirty AND
-// call `schedule()`/`flush()` — i.e. undo/redo are indistinguishable from a
-// manual edit to the rest of the save pipeline (single-flight, stale_form
-// 409 handling, failure surfacing all unchanged).
+// call `flush()` (commit-on-blur redesign, tech-lead-20260720T041354 — an
+// undo/redo has no following blur, so it must flush immediately rather than
+// only markDirty()) — i.e. undo/redo are indistinguishable from a manual
+// edit to the rest of the save pipeline (single-flight, stale_form 409
+// handling, failure surfacing all unchanged).
 
 export type FieldController = {
   /** Unique per field, e.g. "home:lede" or "contact:link:abc123.label". */

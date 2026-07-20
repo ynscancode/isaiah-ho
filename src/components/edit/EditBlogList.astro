@@ -78,7 +78,11 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
 
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.blog = emptyStateEl.value;
-      emptyStatesAutosaver.schedule();
+      emptyStatesAutosaver.markDirty();
+    });
+
+    emptyStateEl.addEventListener('blur', () => {
+      void emptyStatesAutosaver.flush();
     });
 
     window.addEventListener('editor:save-all', () => {

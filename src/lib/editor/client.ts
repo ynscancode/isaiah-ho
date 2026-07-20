@@ -342,30 +342,31 @@ if (typeof window !== 'undefined') {
 }
 
 export type Autosaver = {
-  /** Call on every field change. Marks the area dirty, (re)starts the
-   * debounce timer, and — if a save is already in flight — schedules
-   * exactly one trailing re-save once it resolves (never drops the last
-   * edit, never runs two saves concurrently for the same area). */
-  schedule: () => void;
-  /** Call from the Save button / `editor:save-all` path: cancels any
-   * pending debounce and saves now (still single-flight safe). Returns a
-   * promise so callers that need to know when the save (and any trailing
-   * re-save chained onto it) has settled can await it. */
+  /** Call on every field change (continuous typing). Marks the area dirty
+   * (registers it in `unsavedAreas` for the beforeunload guard) and clears
+   * any pending transient-failure retry timer. Starts NO timer and NEVER
+   * calls `runSave` — this is commit-on-blur, not commit-on-pause. The
+   * actual git commit happens only via `flush()` (tech-lead-20260720T041354
+   * save-trigger redesign). */
+  markDirty: () => void;
+  /** Call from a discrete-commit event (field blur, `<select>` change,
+   * picker/prompt confirm, undo/redo apply, the Save button /
+   * `editor:save-all` path): saves now (single-flight safe). This is the
+   * SOLE git-commit trigger. Returns a promise so callers that need to know
+   * when the save (and any trailing re-save chained onto it) has settled
+   * can await it. */
   flush: () => Promise<void>;
 };
 
 export function makeAutosaver({
   save,
-  debounceMs = 1500,
 }: {
   /** Must build its payload from CURRENT working state at call time — the
    * autosaver may call this again for a trailing re-save after the working
    * state has changed further. Return the existing SaveResult contract. */
   save: () => Promise<SaveResult>;
-  debounceMs?: number;
 }): Autosaver {
   const id = autosaverIdSeq++;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
   let pendingResave = false;
@@ -450,8 +451,8 @@ export function makeAutosaver({
       setStatus('error', { silent: true });
     } else {
       // Generic/other failure: surface it and leave the area dirty so the
-      // next edit (schedule()) or the Save button / editor:save-all
-      // (flush()) retries — a failed background save is never silently lost.
+      // next blur/commit (flush()) or the Save button / editor:save-all
+      // retries — a failed background save is never silently lost.
       setStatus('error');
     }
 
@@ -461,24 +462,15 @@ export function makeAutosaver({
     }
   }
 
-  function schedule() {
+  function markDirty() {
     setStatus('dirty');
     clearRetryTimer();
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = undefined;
-      void runSave();
-    }, debounceMs);
   }
 
   async function flush(): Promise<void> {
     clearRetryTimer();
-    if (timer) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
     await runSave();
   }
 
-  return { schedule, flush };
+  return { markDirty, flush };
 }

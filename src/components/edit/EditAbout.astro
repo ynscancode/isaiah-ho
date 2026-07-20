@@ -94,7 +94,7 @@ const { about } = Astro.props;
 
     bodyEl.addEventListener('input', () => {
       working.body = bodyEl.value;
-      autosaver.schedule();
+      autosaver.markDirty();
     });
 
     wireField({
@@ -106,8 +106,15 @@ const { about } = Astro.props;
       },
       onApply: (value) => {
         working.body = value;
-        autosaver.schedule();
+        void autosaver.flush(); // undo/redo apply — no following blur
       },
+    });
+
+    // commit(historyId) (undo-step boundary, inside wireField's own blur
+    // listener above) must run before flush() — registering this AFTER
+    // wireField() guarantees DOM listener order fires commit first.
+    bodyEl.addEventListener('blur', () => {
+      void autosaver.flush();
     });
 
     window.addEventListener('editor:save-all', () => {
