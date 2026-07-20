@@ -1,29 +1,32 @@
 ---
 /**
  * Rotation motif — concentric spinning squares, pure CSS, no runtime JS.
- * Ported verbatim from the hero-graphic-options.html source artifact
- * (rotation `.sq` spin/spin-rev + offset-path dot, lines 152-165).
  *
- * aria-label fidelity fix (ui-ux-designer-20260719T154812 section (e)):
- * the source artifact's own aria-label was stale ("a dot rides a different
- * third box") relative to its lede copy and actual geometry. Counting from
- * the innermost box outward: 175/164/148.5/126.5/95/50 — the amber box
- * (stroke #c87f0a) is x=126.5, the 4th box from inside; the dot's box is
- * x=164, the 2nd box from inside (non-amber). Label corrected to match.
+ * Geometry (nesting invariant): consecutive squares are scaled by exactly
+ * √2 (each outer = inner × 1.41421…), so a rotating inner square's corners
+ * reach precisely its neighbour's edge distance and never poke through —
+ * the classic "corners just fit inside the next square" nesting, holding at
+ * every relative rotation. Half-widths: 140, 99, 70, 49.5, 35, 24.75 →
+ * widths 280, 198, 140, 99, 70, 49.5. The outermost corner reach is
+ * 140·√2 ≈ 198 < 200, so it also stays inside the 400×400 viewBox.
+ *
+ * Counting from the innermost box outward (1→6): the amber box (#c87f0a)
+ * is the 4th (width 140); the dot rides the 2nd (width 70, non-amber),
+ * travelling that box's edge opposite to its spin. aria-label matches.
  */
 ---
 
-<svg viewBox="0 0 400 400" role="img" aria-label="Concentric squares; the fourth box from inside is amber, a dot rides the non-amber second box the opposite way to its spin">
+<svg viewBox="0 0 400 400" role="img" aria-label="Concentric squares nested at a 45-degree scale; the fourth box from inside is amber, a dot rides the non-amber second box the opposite way to its spin">
   <rect class="sq" x="60" y="60" width="280" height="280" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin; animation-duration:32s; animation-delay:-13s"></rect>
-  <rect class="sq" x="95" y="95" width="210" height="210" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:38s; animation-delay:-5s"></rect>
-  <rect class="sq" x="126.5" y="126.5" width="147" height="147" fill="none" stroke="#c87f0a" stroke-width="1.7" style="animation-name:spin; animation-duration:25s; animation-delay:-19s"></rect>
-  <rect class="sq" x="148.5" y="148.5" width="103" height="103" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:42s; animation-delay:-8s"></rect>
+  <rect class="sq" x="101" y="101" width="198" height="198" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:38s; animation-delay:-5s"></rect>
+  <rect class="sq" x="130" y="130" width="140" height="140" fill="none" stroke="#c87f0a" stroke-width="1.7" style="animation-name:spin; animation-duration:25s; animation-delay:-19s"></rect>
+  <rect class="sq" x="150.5" y="150.5" width="99" height="99" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:42s; animation-delay:-8s"></rect>
   <g class="sq" style="animation-name:spin; animation-duration:21s; animation-delay:-22s">
-    <rect x="164" y="164" width="72" height="72" fill="none" stroke="#34406b" stroke-width="1.4"></rect>
-    <circle class="rot-dot-halo" cx="0" cy="0" r="10" fill="rgba(200,127,10,0.16)" style={`offset-path:path('M164,164 H236 V236 H164 Z'); animation:headmove 8s linear infinite reverse`}></circle>
-    <circle class="rot-dot" cx="0" cy="0" r="4.5" fill="#e0a94a" style={`offset-path:path('M164,164 H236 V236 H164 Z'); animation:headmove 8s linear infinite reverse`}></circle>
+    <rect x="165" y="165" width="70" height="70" fill="none" stroke="#34406b" stroke-width="1.4"></rect>
+    <circle class="rot-dot-halo" cx="0" cy="0" r="9" fill="rgba(200,127,10,0.16)" style={`offset-path:path('M165,165 H235 V235 H165 Z'); animation:headmove 8s linear infinite reverse`}></circle>
+    <circle class="rot-dot" cx="0" cy="0" r="4.5" fill="#e0a94a" style={`offset-path:path('M165,165 H235 V235 H165 Z'); animation:headmove 8s linear infinite reverse`}></circle>
   </g>
-  <rect class="sq" x="175" y="175" width="50" height="50" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:30s; animation-delay:-3s"></rect>
+  <rect class="sq" x="175.25" y="175.25" width="49.5" height="49.5" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:30s; animation-delay:-3s"></rect>
   <circle cx="200" cy="200" r="2.5" fill="#8891ab"></circle>
 </svg>
 
