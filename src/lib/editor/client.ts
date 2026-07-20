@@ -387,13 +387,19 @@ export type Autosaver = {
    * actual git commit happens only via `flush()` (tech-lead-20260720T041354
    * save-trigger redesign). */
   markDirty: () => void;
-  /** Call from a discrete-commit event (field blur, `<select>` change,
-   * picker/prompt confirm, undo/redo apply, the Save button /
-   * `editor:save-all` path): saves now (single-flight safe). This is the
-   * SOLE git-commit trigger. Returns a promise so callers that need to know
-   * when the save (and any trailing re-save chained onto it) has settled
-   * can await it. */
+  /** Call from a discrete-commit event (`<select>` change, picker/prompt
+   * confirm, undo/redo apply, the Save button / `editor:save-all` path):
+   * saves now unconditionally (single-flight safe). This is the SOLE
+   * git-commit trigger. Returns a promise so callers that need to know when
+   * the save (and any trailing re-save chained onto it) has settled can
+   * await it. */
   flush: () => Promise<void>;
+  /** Call from a blur handler: saves now, but ONLY if a real edit happened
+   * since the last successful save (i.e. `markDirty` fired without an
+   * intervening `result.ok`). A focus+blur with no typing is a no-op — no
+   * `runSave`, no status broadcast, no commit (tech-lead-20260720T110251).
+   */
+  flushIfDirty: () => Promise<void>;
 };
 
 export function makeAutosaver({
@@ -408,6 +414,10 @@ export function makeAutosaver({
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
   let pendingResave = false;
+  // tech-lead-20260720T110251: true once a real edit (markDirty) has
+  // happened since the last SUCCESSFUL save. Cleared only on result.ok so a
+  // failed save never silently drops a genuinely-unsaved change.
+  let dirty = false;
 
   // tech-lead-20260718T174921 Design A3: transient upstream failures
   // (503 github_unavailable from the server's retryable-GitHubApiError
@@ -465,6 +475,7 @@ export function makeAutosaver({
     inFlight = false;
 
     if (result.ok) {
+      dirty = false;
       clearRetryTimer();
       setStatus('saved');
     } else if (result.error === 'github_unavailable' || result.error === 'network_error') {
@@ -501,6 +512,7 @@ export function makeAutosaver({
   }
 
   function markDirty() {
+    dirty = true;
     setStatus('dirty');
     clearRetryTimer();
   }
@@ -510,5 +522,10 @@ export function makeAutosaver({
     await runSave();
   }
 
-  return { markDirty, flush };
+  async function flushIfDirty(): Promise<void> {
+    if (!dirty) return;
+    await flush();
+  }
+
+  return { markDirty, flush, flushIfDirty };
 }

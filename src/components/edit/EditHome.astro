@@ -189,7 +189,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       });
       el.addEventListener('blur', () => {
         commit(historyId);
-        void autosaver.flush();
+        void autosaver.flushIfDirty();
       });
     });
 

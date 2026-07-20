@@ -159,7 +159,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         // first; this second blur listener (registered after) fires next
         // and performs the actual git-commit flush.
         el.addEventListener('blur', () => {
-          void autosaver.flush();
+          void autosaver.flushIfDirty();
         });
       });
 
@@ -196,7 +196,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
         // commit(historyId) (wireField's own blur listener above) runs
         // first; this second blur listener (registered after) fires next.
         el.addEventListener('blur', () => {
-          void autosaver.flush();
+          void autosaver.flushIfDirty();
         });
       });
 
@@ -325,7 +325,7 @@ const heading = area === 'projects' ? 'Projects' : 'Experience';
       // commit(historyId) (wireField's own blur listener above) runs first;
       // this second blur listener (registered after) fires next.
       emptyStateEl.addEventListener('blur', () => {
-        void emptyStatesAutosaver.flush();
+        void emptyStatesAutosaver.flushIfDirty();
       });
 
       window.addEventListener('editor:save-all', () => {

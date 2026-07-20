@@ -202,7 +202,7 @@ const { post, isNew } = Astro.props;
     // fires commit first, then the git-commit flush.
     for (const el of [titleEl, descEl, dateEl, tagsEl, bodyEl]) {
       el.addEventListener('blur', () => {
-        void autosaver.flush();
+        void autosaver.flushIfDirty();
       });
     }
 
