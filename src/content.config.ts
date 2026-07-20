@@ -1,5 +1,6 @@
 import { defineCollection, z } from 'astro:content';
 import { glob, file } from 'astro/loaders';
+import { HERO_VARIANTS } from './lib/heroVariants';
 
 const blog = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
@@ -30,6 +31,10 @@ const site = defineCollection({
         lede: z.string(),
         primaryCta: ctaSchema,
         ghostCta: ctaSchema,
+        // Chosen animated hero-graphic variant. Optional so pre-existing
+        // site.json (written before this field existed) still validates;
+        // absent => the public page falls back to DEFAULT_HERO_VARIANT.
+        graphic: z.enum(HERO_VARIANTS).optional(),
       })
       .optional(),
     // "about" entry

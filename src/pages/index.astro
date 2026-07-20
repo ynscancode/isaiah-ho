@@ -32,7 +32,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     primaryCta={hero.primaryCta}
     ghostCta={hero.ghostCta}
   >
-    <HeroGraphic slot="matrix" default="synthesis" />
+    <HeroGraphic slot="matrix" default={hero.graphic ?? 'synthesis'} />
   </Hero>
 
   <Band variant="paper" eyebrow="03 — Selected work">

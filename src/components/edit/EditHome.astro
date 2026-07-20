@@ -1,6 +1,7 @@
 ---
 import Hero from '../Hero.astro';
-import PositioningMatrix from '../PositioningMatrix.astro';
+import HeroGraphic from '../hero/HeroGraphic.astro';
+import { HERO_VARIANTS, DEFAULT_HERO_VARIANT, type HeroVariant } from '../../lib/heroVariants';
 
 export type Props = {
   hero: {
@@ -9,13 +10,23 @@ export type Props = {
     lede: string;
     primaryCta: { label: string; href: string };
     ghostCta: { label: string; href: string };
+    graphic?: HeroVariant;
   };
 };
 
 const { hero } = Astro.props;
+const currentGraphic: HeroVariant = hero.graphic ?? DEFAULT_HERO_VARIANT;
+
+// Human labels for the picker buttons.
+const GRAPHIC_LABELS: Record<HeroVariant, string> = {
+  radar: 'Radar sweep',
+  rotation: 'Rotation',
+  synthesis: 'Synthesis',
+  orbit: 'Orbit',
+};
 ---
 
-<div data-editable-area="home">
+<div data-editable-area="home" data-current-graphic={currentGraphic}>
   <Hero
     eyebrow={hero.eyebrow}
     headlineHtml={hero.headlineHtml}
@@ -24,21 +35,34 @@ const { hero } = Astro.props;
     ghostCta={hero.ghostCta}
     editable
   >
-    <PositioningMatrix
-      slot="matrix"
-      axisTop="Data-driven"
-      axisBottom="Narrative-driven"
-      axisLeft="Exploratory"
-      axisRight="Structured"
-      quadrants={['Frameworks', 'Case method', 'Discovery', 'Storytelling']}
-      dotTop="28%"
-      dotLeft="64%"
-      dotLabel="Isaiah"
-      ariaLabel="Positioning matrix: structured, data-driven approach, placed in the Case method quadrant. Not editable in MVP — see product-owner-20260716T000000."
-    />
+    <HeroGraphic slot="matrix" default={currentGraphic} />
   </Hero>
+
+  <div class="graphic-picker" role="group" aria-label="Hero graphic">
+    <div class="graphic-picker-head">
+      <span class="graphic-picker-title mono">Hero graphic</span>
+      <span class="graphic-picker-hint">Previewing a graphic won’t change your site — click <strong>Use this graphic</strong> to save it.</span>
+    </div>
+    <div class="graphic-picker-controls">
+      <div class="graphic-picker-options">
+        {HERO_VARIANTS.map((v) => (
+          <button
+            type="button"
+            class="graphic-pick-btn mono"
+            data-graphic-pick={v}
+            aria-pressed={v === currentGraphic ? 'true' : 'false'}
+          >{GRAPHIC_LABELS[v]}</button>
+        ))}
+      </div>
+      <button type="button" class="graphic-confirm-btn" data-graphic-confirm disabled>
+        Use this graphic
+      </button>
+    </div>
+    <p class="graphic-picker-status mono" data-graphic-status aria-live="polite"></p>
+  </div>
+
   <p class="editor-note">
-    The positioning matrix, page navigation, and footer are not editable in this MVP
+    Page navigation and footer are not editable in this MVP
     (see product-owner-20260716T000000 on the team board).
   </p>
 </div>
@@ -62,12 +86,70 @@ const { hero } = Astro.props;
         label: container.querySelector<HTMLElement>('[data-editable="ghostCta.label"]')?.textContent ?? '',
         href: container.querySelector<HTMLAnchorElement>('[data-editable="ghostCta.label"]')?.getAttribute('href') ?? '',
       },
+      // Confirmed graphic variant. Included in EVERY home save so a text
+      // autosave never drops it — but only ever CHANGED by the explicit
+      // "Use this graphic" confirm below, so merely previewing a variant
+      // does not mutate this and does not trigger a save (no history bloat).
+      graphic: container.getAttribute('data-current-graphic') ?? 'synthesis',
     };
 
     const working: typeof seed = JSON.parse(JSON.stringify(seed));
 
     const autosaver = makeAutosaver({
       save: () => saveArea(AREA, working),
+    });
+
+    // ---- Hero-graphic preview switcher + confirm-to-save ----
+    // Previewing toggles which build-time-rendered variant is visible
+    // (client-only, no network); confirming performs exactly ONE save of
+    // the whole home area with the new `graphic` value.
+    const GRAPHIC_VARIANTS = ['radar', 'rotation', 'synthesis', 'orbit'] as const;
+    const canvas = container.querySelector<HTMLElement>('.hero-graphic-canvas');
+    const pickBtns = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-graphic-pick]'));
+    const confirmBtn = container.querySelector<HTMLButtonElement>('[data-graphic-confirm]');
+    const graphicStatus = container.querySelector<HTMLElement>('[data-graphic-status]');
+
+    let previewGraphic = working.graphic;
+
+    function showVariant(variant: string) {
+      if (!canvas) return;
+      for (const name of GRAPHIC_VARIANTS) {
+        const el = canvas.querySelector<HTMLElement>(`[data-hero-variant="${name}"]`);
+        if (el) el.hidden = name !== variant;
+      }
+    }
+
+    function refreshPickerUi() {
+      for (const btn of pickBtns) {
+        btn.setAttribute('aria-pressed', String(btn.getAttribute('data-graphic-pick') === previewGraphic));
+      }
+      const changed = previewGraphic !== working.graphic;
+      if (confirmBtn) confirmBtn.disabled = !changed;
+      if (graphicStatus) {
+        graphicStatus.textContent = changed
+          ? 'Preview only — not saved yet.'
+          : '';
+      }
+    }
+
+    for (const btn of pickBtns) {
+      btn.addEventListener('click', () => {
+        const variant = btn.getAttribute('data-graphic-pick');
+        if (!variant) return;
+        previewGraphic = variant;
+        showVariant(variant);
+        refreshPickerUi();
+      });
+    }
+
+    confirmBtn?.addEventListener('click', async () => {
+      if (previewGraphic === working.graphic) return;
+      working.graphic = previewGraphic;
+      confirmBtn.disabled = true;
+      if (graphicStatus) graphicStatus.textContent = 'Saving…';
+      await autosaver.flush(); // exactly one save/commit for the confirmed change
+      refreshPickerUi();
+      if (graphicStatus) graphicStatus.textContent = 'Saved. This graphic is now on your live preview.';
     });
 
     function readEl(el: HTMLElement): string {
@@ -149,5 +231,103 @@ const { hero } = Astro.props;
     padding: 1rem 2.5rem 0;
     font-size: 0.85rem;
     color: var(--slate, #5b6472);
+  }
+
+  .graphic-picker {
+    max-width: 1000px;
+    margin: 1.5rem auto 0;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--line, #d8d3c7);
+    border-left: 3px solid var(--signal, #c87f0a);
+    border-radius: 4px;
+    background: #fdfcfa;
+  }
+
+  .graphic-picker-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.9rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .graphic-picker-title {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--signal-text, #8a5a00);
+  }
+
+  .graphic-picker-hint {
+    font-size: 0.85rem;
+    color: var(--slate, #5b6472);
+  }
+
+  .graphic-picker-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.9rem;
+    justify-content: space-between;
+  }
+
+  .graphic-picker-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .graphic-pick-btn {
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    color: var(--ink, #12182b);
+    background: #fff;
+    border: 1px solid var(--line, #d8d3c7);
+    border-radius: 4px;
+    padding: 0.45rem 0.7rem;
+    cursor: pointer;
+  }
+
+  .graphic-pick-btn:hover {
+    border-color: var(--signal, #c87f0a);
+  }
+
+  .graphic-pick-btn[aria-pressed="true"] {
+    color: #12182b;
+    background: var(--signal, #c87f0a);
+    border-color: var(--signal, #c87f0a);
+  }
+
+  .graphic-pick-btn:focus-visible {
+    outline: 2px solid var(--ink, #12182b);
+    outline-offset: 2px;
+  }
+
+  .graphic-confirm-btn {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--ink, #12182b);
+    border: 1px solid var(--ink, #12182b);
+    border-radius: 4px;
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .graphic-confirm-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .graphic-confirm-btn:not(:disabled):hover {
+    background: #000;
+  }
+
+  .graphic-picker-status {
+    margin: 0.7rem 0 0;
+    min-height: 1.1em;
+    font-size: 0.76rem;
+    color: var(--signal-text, #8a5a00);
   }
 </style>

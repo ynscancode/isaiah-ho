@@ -12,12 +12,13 @@ import HeroRadar from './HeroRadar.astro';
 import HeroRotation from './HeroRotation.astro';
 import HeroSynthesis from './HeroSynthesis.astro';
 import HeroOrbit from './HeroOrbit.astro';
+import { DEFAULT_HERO_VARIANT, type HeroVariant } from '../../lib/heroVariants';
 
 export type Props = {
-  default?: 'radar' | 'rotation' | 'synthesis' | 'orbit';
+  default?: HeroVariant;
 };
 
-const { default: defaultVariant = 'synthesis' } = Astro.props;
+const { default: defaultVariant = DEFAULT_HERO_VARIANT } = Astro.props;
 ---
 
 <div class="hero-graphic-canvas">

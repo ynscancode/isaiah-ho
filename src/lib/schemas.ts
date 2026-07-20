@@ -1,6 +1,7 @@
 import { z } from 'astro:content';
 import { ABOUT_IMAGE_PUBLIC_PATH_RE } from './contentPaths';
 import { isPersistableContactValue } from './contactValue';
+import { HERO_VARIANTS, DEFAULT_HERO_VARIANT } from './heroVariants';
 
 // Server-side validation for every git-write body (validate at the boundary —
 // this IS the boundary: an authenticated-but-still-untrusted-payload write).
@@ -44,6 +45,11 @@ export const heroBodySchema = z.object({
   lede: z.string().max(2000),
   primaryCta: ctaSchema,
   ghostCta: ctaSchema,
+  // Hero-graphic variant — validated against the fixed allowlist at the
+  // trust boundary (KB-0017), so a crafted save can never persist an
+  // arbitrary string here. Optional+default: a home save that predates the
+  // field (or omits it) keeps the default rather than failing.
+  graphic: z.enum(HERO_VARIANTS).optional().default(DEFAULT_HERO_VARIANT),
 });
 
 export const aboutBodySchema = z.object({
