@@ -419,19 +419,19 @@ const { contentSource } = Astro.props;
   });
 
   previewBtn?.addEventListener('click', async () => {
-    setMessage('Fetching preview…');
+    setMessage('Building preview… this takes about 30s.');
     const result = await fetchPreview();
     if (!result) {
       setMessage('No draft yet — save a change first, then try Preview again.');
       return;
     }
-    setMessage('');
+    setMessage('Preview is building (~30s) — open it once ready: ');
     if (message) {
       const link = document.createElement('a');
       link.href = result.previewUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = `Preview: ${result.previewUrl}`;
+      link.textContent = `Open preview (ready in ~30s): ${result.previewUrl}`;
       message.appendChild(link);
     }
   });
