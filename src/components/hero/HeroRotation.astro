@@ -23,11 +23,18 @@
   <rect class="sq" x="150.5" y="150.5" width="99" height="99" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:42s; animation-delay:-8s"></rect>
   <g class="sq" style="animation-name:spin; animation-duration:21s; animation-delay:-22s">
     <rect x="165" y="165" width="70" height="70" fill="none" stroke="#34406b" stroke-width="1.4"></rect>
-    <circle class="rot-dot-halo" cx="0" cy="0" r="9" fill="rgba(200,127,10,0.16)" style={`offset-path:path('M165,165 H235 V235 H165 Z'); animation:headmove 8s linear infinite reverse`}></circle>
-    <circle class="rot-dot" cx="0" cy="0" r="4.5" fill="#e0a94a" style={`offset-path:path('M165,165 H235 V235 H165 Z'); animation:headmove 8s linear infinite reverse`}></circle>
   </g>
   <rect class="sq" x="175.25" y="175.25" width="49.5" height="49.5" fill="none" stroke="#34406b" stroke-width="1.4" style="animation-name:spin-rev; animation-duration:30s; animation-delay:-3s"></rect>
   <circle cx="200" cy="200" r="2.5" fill="#8891ab"></circle>
+  <!-- Dot + glow LAST in document order = always the top paint layer, so no
+       square ever draws over them. They ride a second group with the SAME
+       spin animation as the width-70 square above (identical duration/delay/
+       direction, both build-time rendered → perfectly in sync), so the dot
+       still travels that square's edge — only the z-order changed. -->
+  <g class="sq" style="animation-name:spin; animation-duration:21s; animation-delay:-22s">
+    <circle class="rot-dot-halo" cx="0" cy="0" r="10" fill="rgba(200,127,10,0.22)" style={`offset-path:path('M165,165 H235 V235 H165 Z'); animation:headmove 8s linear infinite reverse, rot-node-pulse 2.8s ease-in-out infinite`}></circle>
+    <circle class="rot-dot" cx="0" cy="0" r="4.5" fill="#e0a94a" style={`offset-path:path('M165,165 H235 V235 H165 Z'); animation:headmove 8s linear infinite reverse`}></circle>
+  </g>
 </svg>
 
 <style>
@@ -53,6 +60,20 @@
   .rot-dot,
   .rot-dot-halo {
     offset-rotate: 0deg;
+  }
+
+  /* Pulsing glow on the dot's halo, mirroring HeroSynthesis's convergence
+     node (node-pulse: opacity 0.45->0.85, scale 1->1.18, 2.8s ease-in-out).
+     The halo runs two animations at once — `headmove` moves it along the
+     square's edge (offset-distance), `rot-node-pulse` breathes it (transform
+     scale + opacity); they animate different properties so they compose. */
+  @keyframes rot-node-pulse {
+    0%, 100% { opacity: 0.45; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(1.18); }
+  }
+  .rot-dot-halo {
+    transform-box: fill-box;
+    transform-origin: center;
   }
 
   @media (prefers-reduced-motion: reduce) {
