@@ -105,7 +105,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
 
     <div class="highlights-section">
       <h3 class="highlights-subhead mono">Selected</h3>
-      <ol class="highlights-list" data-highlights-selected aria-label="Selected highlights, in display order"></ol>
+      <div data-highlights-selected-groups></div>
       <p class="editor-note" data-highlights-empty-note hidden>Nothing selected yet — add from the pool below.</p>
     </div>
 
@@ -342,7 +342,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     const HIGHLIGHTS_CAP = 6;
     const projectsPool = editorSeed.projectsPool;
     const blogPool = editorSeed.blogPool;
-    const selectedListEl = container.querySelector<HTMLOListElement>('[data-highlights-selected]');
+    const selectedGroupsEl = container.querySelector<HTMLElement>('[data-highlights-selected-groups]');
     const selectedEmptyNoteEl = container.querySelector<HTMLElement>('[data-highlights-empty-note]');
     const poolListEl = container.querySelector<HTMLUListElement>('[data-highlights-pool]');
     const poolEmptyNoteEl = container.querySelector<HTMLElement>('[data-highlights-pool-empty]');
@@ -357,15 +357,71 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       return b ? { title: b.title, typeLabel: 'Post', metaLabel: b.date } : null;
     }
 
+    // Type-local grouping for KB-0020 cross-surface parity with the public
+    // Highlights render (tech-lead-20260720T160424Z item 4 / ui-ux-designer-
+    // 20260721T050000Z #8). Partitions `working.highlights` by `type` on
+    // every render — stored flat-array order is unchanged; grouping is
+    // display-only, same as the public page's partition. Lone-group
+    // suppression: when only one type is present in the Selected list, no
+    // nested <h4> — a flat list exactly like before grouping existed. An
+    // empty type-group renders nothing (no heading, no placeholder).
+    function typeIndices(type: HighlightRef['type']): number[] {
+      const out: number[] = [];
+      working.highlights.forEach((h, i) => {
+        if (h.type === type) out.push(i);
+      });
+      return out;
+    }
+
+    function swapHighlights(a: number, b: number) {
+      const tmp = working.highlights[a];
+      working.highlights[a] = working.highlights[b];
+      working.highlights[b] = tmp;
+    }
+
+    function buildSelectedGroup(
+      groupHeading: string,
+      entries: Array<{ ref: HighlightRef; index: number }>,
+      showHeading: boolean
+    ): HTMLDivElement {
+      const wrap = document.createElement('div');
+      wrap.className = 'highlights-group';
+      if (showHeading) {
+        const heading = document.createElement('h4');
+        heading.className = 'mono group-subhead';
+        heading.textContent = groupHeading;
+        wrap.appendChild(heading);
+      }
+      const ol = document.createElement('ol');
+      ol.className = 'highlights-list';
+      ol.setAttribute('aria-label', `Selected ${groupHeading.toLowerCase()}, in display order`);
+      entries.forEach((entry, posInGroup) => {
+        ol.appendChild(buildSelectedRow(entry.ref, entry.index, posInGroup, entries.length));
+      });
+      wrap.appendChild(ol);
+      return wrap;
+    }
+
     function renderHighlights() {
-      if (!selectedListEl || !poolListEl) return;
+      if (!selectedGroupsEl || !poolListEl) return;
       const total = working.highlights.length;
       const atCap = total >= HIGHLIGHTS_CAP;
 
-      selectedListEl.innerHTML = '';
-      working.highlights.forEach((ref, index) => {
-        selectedListEl.appendChild(buildSelectedRow(ref, index, total));
-      });
+      selectedGroupsEl.innerHTML = '';
+      const projectEntries = working.highlights
+        .map((ref, index) => ({ ref, index }))
+        .filter((entry) => entry.ref.type === 'project');
+      const blogEntries = working.highlights
+        .map((ref, index) => ({ ref, index }))
+        .filter((entry) => entry.ref.type === 'blog');
+      const showGroupHeadings = projectEntries.length > 0 && blogEntries.length > 0;
+
+      if (projectEntries.length > 0) {
+        selectedGroupsEl.appendChild(buildSelectedGroup('Projects', projectEntries, showGroupHeadings));
+      }
+      if (blogEntries.length > 0) {
+        selectedGroupsEl.appendChild(buildSelectedGroup('Blog', blogEntries, showGroupHeadings));
+      }
       if (selectedEmptyNoteEl) selectedEmptyNoteEl.hidden = total > 0;
       if (capNoteEl) capNoteEl.hidden = !atCap;
 
@@ -392,13 +448,20 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       void autosaver.flush(); // add/remove/move click — discrete commit, always saves
     }
 
-    function buildSelectedRow(ref: HighlightRef, index: number, total: number): HTMLLIElement {
+    // `flatIndex` is the item's real position in `working.highlights` (used
+    // for splice/swap — the array's stored authority). `posInGroup`/
+    // `groupTotal` are the item's position WITHIN its type-group as
+    // displayed — Move up/down boundaries and the position badge are keyed
+    // off these, not the flat index, so moving reorders within the type
+    // (type-local neighbor swap in the flat array) per ui-ux-designer-
+    // 20260721T050000Z #8.
+    function buildSelectedRow(ref: HighlightRef, flatIndex: number, posInGroup: number, groupTotal: number): HTMLLIElement {
       const li = document.createElement('li');
       li.className = 'highlights-row';
 
       const posSpan = document.createElement('span');
       posSpan.className = 'highlights-position mono';
-      posSpan.textContent = `#${index + 1}`;
+      posSpan.textContent = `#${posInGroup + 1}`;
       li.appendChild(posSpan);
 
       const resolved = resolveHighlight(ref);
@@ -415,7 +478,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
         removeBtn.textContent = 'Remove';
         removeBtn.setAttribute('aria-label', 'Remove this missing highlight');
         removeBtn.addEventListener('click', () => {
-          working.highlights.splice(index, 1);
+          working.highlights.splice(flatIndex, 1);
           commitHighlights();
         });
         li.appendChild(removeBtn);
@@ -440,11 +503,11 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       upBtn.className = 'highlights-move-btn';
       upBtn.textContent = 'Move up';
       upBtn.setAttribute('aria-label', `Move ${resolved.title} up`);
-      upBtn.disabled = index === 0;
+      upBtn.disabled = posInGroup === 0;
       upBtn.addEventListener('click', () => {
-        if (index === 0) return;
-        const [item] = working.highlights.splice(index, 1);
-        working.highlights.splice(index - 1, 0, item);
+        if (posInGroup === 0) return;
+        const neighborIndex = typeIndices(ref.type)[posInGroup - 1];
+        swapHighlights(flatIndex, neighborIndex);
         commitHighlights();
       });
       controls.appendChild(upBtn);
@@ -454,11 +517,11 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       downBtn.className = 'highlights-move-btn';
       downBtn.textContent = 'Move down';
       downBtn.setAttribute('aria-label', `Move ${resolved.title} down`);
-      downBtn.disabled = index === total - 1;
+      downBtn.disabled = posInGroup === groupTotal - 1;
       downBtn.addEventListener('click', () => {
-        if (index === total - 1) return;
-        const [item] = working.highlights.splice(index, 1);
-        working.highlights.splice(index + 1, 0, item);
+        if (posInGroup === groupTotal - 1) return;
+        const neighborIndex = typeIndices(ref.type)[posInGroup + 1];
+        swapHighlights(flatIndex, neighborIndex);
         commitHighlights();
       });
       controls.appendChild(downBtn);
@@ -469,7 +532,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       removeBtn.textContent = 'Remove';
       removeBtn.setAttribute('aria-label', `Remove ${resolved.title}`);
       removeBtn.addEventListener('click', () => {
-        working.highlights.splice(index, 1);
+        working.highlights.splice(flatIndex, 1);
         commitHighlights();
       });
       controls.appendChild(removeBtn);
@@ -685,6 +748,26 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--slate, #5b6472);
+  }
+
+  /* Selected-list Projects/Blog grouping (tech-lead-20260720T160424Z item 4
+     / ui-ux-designer-20260721T050000Z #8) — nested <h4> group subhead,
+     reusing the same mono + --signal-text "group subhead" primitive as the
+     public homepage's Projects/Blog subheads. Suppressed entirely (no
+     .highlights-group wrapper at all) when only one type is present in the
+     Selected list, so a flat, single-type Selected list looks exactly as
+     it did before grouping existed. */
+  .highlights-group + .highlights-group {
+    margin-top: 1.1rem;
+  }
+
+  .highlights-group .group-subhead {
+    margin: 0.8rem 0 0.5rem;
+    color: var(--signal-text, #8a5a00);
+  }
+
+  [data-highlights-selected-groups] > .highlights-group:first-child .group-subhead {
+    margin-top: 0;
   }
 
   .highlights-list,
