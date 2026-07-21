@@ -120,15 +120,25 @@ const trail = buildTrail();
   }
 
   @keyframes tip {
-    0% { transform: scaleY(1); }
-    50% { transform: scaleY(0.42); }
-    100% { transform: scaleY(1); }
+    0%      { transform: scaleY(1); }
+    8.333%  { transform: scaleY(0.866); }
+    16.667% { transform: scaleY(0.5); }
+    25%     { transform: scaleY(0); }
+    33.333% { transform: scaleY(-0.5); }
+    41.667% { transform: scaleY(-0.866); }
+    50%     { transform: scaleY(-1); }
+    58.333% { transform: scaleY(-0.866); }
+    66.667% { transform: scaleY(-0.5); }
+    75%     { transform: scaleY(0); }
+    83.333% { transform: scaleY(0.5); }
+    91.667% { transform: scaleY(0.866); }
+    100%    { transform: scaleY(1); }
   }
   .ring-flip {
     transform-box: view-box;
     transform-origin: 200px 200px;
     animation-name: tip;
-    animation-timing-function: ease-in-out;
+    animation-timing-function: linear;
     animation-iteration-count: infinite;
   }
 
