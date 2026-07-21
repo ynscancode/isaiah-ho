@@ -25,10 +25,20 @@ const MONTHS = [
   'Dec',
 ];
 
-function monthYear(isoDate: string): string {
-  const year = isoDate.slice(0, 4);
-  const month = MONTHS[Number(isoDate.slice(5, 7)) - 1];
-  return `${month} ${year}`;
+// Returns "MMM yyyy" when the full month can be parsed, falls back to the
+// bare year (pre-fix behavior) when only a valid leading 4-digit year is
+// present, or null when there's no usable date at all. Never returns a
+// string containing "undefined" (qa-engineer-20260721T213235).
+function monthYear(isoDate: string): string | null {
+  const monthMatch = /^(\d{4})-(\d{2})/.exec(isoDate);
+  if (monthMatch) {
+    const monthIndex = Number(monthMatch[2]) - 1;
+    const month = MONTHS[monthIndex];
+    if (month) return `${month} ${monthMatch[1]}`;
+  }
+  const yearMatch = /^\d{4}/.exec(isoDate);
+  if (yearMatch) return yearMatch[0];
+  return null;
 }
 
 export function deriveEyebrow(
@@ -38,10 +48,17 @@ export function deriveEyebrow(
 ): string {
   if (!startDate) return category;
   const startMonthYear = monthYear(startDate);
+  // No usable start date (e.g. garbage input) — behave like no startDate.
+  if (!startMonthYear) return category;
   if (!endDate) return `${category} · ${startMonthYear}`;
-  // Same-month-AND-same-year collapse — compare the full yyyy-mm prefix,
-  // not just the year.
-  if (endDate.slice(0, 7) === startDate.slice(0, 7)) return `${category} · ${startMonthYear}`;
   const endMonthYear = monthYear(endDate);
+  // No usable end date — degrade to the start-only branch rather than
+  // rendering a dangling " – " separator.
+  if (!endMonthYear) return `${category} · ${startMonthYear}`;
+  // Same-month (or, when one side fell back to year-only, same-year)
+  // collapse — compare the rendered values rather than raw prefixes so a
+  // year-only fallback still collapses correctly instead of showing
+  // "2024 – 2024".
+  if (endMonthYear === startMonthYear) return `${category} · ${startMonthYear}`;
   return `${category} · ${startMonthYear} – ${endMonthYear}`;
 }
