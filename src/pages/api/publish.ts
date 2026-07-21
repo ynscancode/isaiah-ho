@@ -1,8 +1,36 @@
 import type { APIRoute } from 'astro';
 import { mergeBranches, deleteBranch, ensureDraftBranchSynced } from '../../lib/github';
 import { getRepoRef, getDraftBranch, getWriteToken, MASTER_BRANCH } from '../../lib/gitConfig';
+import { optionalEnv } from '../../lib/env';
 
 export const prerender = false;
+
+// devops-engineer-20260721T212635 diagnosis: publish only merges to master
+// on GitHub and has always relied entirely on Vercel's git auto-deploy to
+// notice that push and build production. If the GitHub webhook/integration
+// isn't delivering, or a dashboard setting (Production Branch / Ignored
+// Build Step) skips it, publish silently reports success with no deploy.
+// Mirrors draft/preview.ts's triggerPreviewBuild() exactly: reads a Deploy
+// Hook URL via optionalEnv (never a literal import.meta.env.NAME read, which
+// Vite would statically inline the secret into the client/server bundle —
+// see env.ts), no-ops silently if unset so publish behaves exactly as today
+// when the hook isn't configured, and is best-effort/fire-and-forget — a
+// failed or missing hook must never fail the publish response, since the
+// merge to master (the guaranteed part) has already succeeded by the time
+// this runs. Never logs the hook URL itself (it's a secret capability URL).
+async function triggerProdBuild(): Promise<void> {
+  const hookUrl = optionalEnv('VERCEL_PROD_DEPLOY_HOOK', '');
+  if (!hookUrl) return;
+
+  try {
+    const res = await fetch(hookUrl, { method: 'POST' });
+    if (!res.ok) {
+      console.error('publish deploy hook returned non-2xx', res.status);
+    }
+  } catch (err) {
+    console.error('publish deploy hook request failed', err);
+  }
+}
 
 // Auth + CSRF already enforced by src/middleware.ts. Only ever merges the
 // one fixed draft branch into the one fixed master branch — no
@@ -25,6 +53,11 @@ export const POST: APIRoute = async () => {
         headers: { 'content-type': 'application/json' },
       });
     }
+
+    // Fire the on-demand production build only now that mergeBranches has
+    // confirmed a real merge landed on master (never on the merge_conflict
+    // 409 branch above). Best-effort — see triggerProdBuild's own comment.
+    await triggerProdBuild();
 
     // Recreate the draft clean from master after a successful publish
     // (tech-lead-20260717T090321 Decision 1d). Safe here specifically
