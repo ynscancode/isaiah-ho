@@ -343,6 +343,19 @@ const showSubheads = isExperience && groups.length > 1;
         // through bodyToHtml on the public detail pages).
         const singleLine = target?.field === 'category' || target?.field === 'title';
 
+        // Bug A fix (tech-lead-20260721T211746): server-rendered initial
+        // value is a raw text node containing literal `\n` (from
+        // Card.astro), which the browser visually collapses. Normalize it
+        // through the same readEditable/writeEditable round-trip used at
+        // runtime so load-state DOM matches edit-state DOM (real `<br>`s).
+        // Guard on includes('\n') — writeEditable(el, '') would append an
+        // empty text node and defeat the :empty::before placeholder for
+        // empty body/detail fields.
+        if (!singleLine && target) {
+          const initial = readEditable(el);
+          if (initial.includes('\n')) writeEditable(el, initial);
+        }
+
         if (singleLine) {
           el.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') event.preventDefault();

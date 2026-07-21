@@ -1,0 +1,68 @@
+---
+// Dev-only repro harness for QA — senior-frontend-dev-20260722, batch
+// (editor newline collapse / eyebrow month+year). NOT part of the
+// production build/site nav: gated on import.meta.env.DEV so it 404s
+// outside `astro dev` and never ships in a static/production build.
+// Renders the real EditCollection component (same one behind /edit) with a
+// hand-seeded entry (not the production `src/data/*.json` files) so QA can:
+//   - reload this page (a genuine fresh server render, not a client-side
+//     nav) and see the seeded multi-line body render with real line breaks
+//     instead of collapsing to one line (Bug A). Note: the editable Card
+//     branch shows the raw `category` field + a native date picker, NOT
+//     the derived eyebrow string — that only appears on the public
+//     (non-editable) pages — so Bug B is verified below via a second,
+//     public-style Card using the exact same `deriveEyebrow` call the real
+//     experience/projects pages make.
+//   - see a public-style card's eyebrow line read "Work · Jun 2024 – Mar
+//     2025" instead of a bare year (Bug B).
+export const prerender = false;
+
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Card from '../../components/Card.astro';
+import EditCollection, { type CollectionEntry } from '../../components/edit/EditCollection.astro';
+import { deriveEyebrow } from '../../lib/eyebrow';
+
+if (!import.meta.env.DEV) {
+  return new Response('Not found', {
+    status: 404,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  });
+}
+
+// Seeded entry: multi-line body (real \n, exactly what a fresh server
+// render of Card.astro emits into the contenteditable's initial text
+// node) and start/end dates in different months/years, so both bugs are
+// simultaneously reproducible from a single hard reload of this page.
+const entries: CollectionEntry[] = [
+  {
+    id: 'repro-1',
+    slug: 'repro-entry',
+    category: 'Work',
+    startDate: '2024-06-03',
+    endDate: '2025-03-20',
+    title: 'Repro entry — multi-line body + non-year dates',
+    body: 'Line one\nLine two\nLine three',
+    detail: 'Detail line one\nDetail line two',
+  },
+];
+
+const emptyStates = { projects: '', experience: '', blog: '', contact: '' };
+---
+
+<BaseLayout title="Dev repro — editor" description="Dev-only repro harness (not indexed, DEV-gated).">
+  <section style="max-width: 420px; margin: 2rem auto;">
+    <h2 class="mono">Bug B check — public-style eyebrow (deriveEyebrow)</h2>
+    <Card
+      eyebrow={deriveEyebrow(entries[0].category, entries[0].startDate, entries[0].endDate)}
+      title={entries[0].title}
+      body={entries[0].body}
+      href="#"
+    />
+  </section>
+  <EditCollection
+    area="experience"
+    eyebrow="Dev repro"
+    entries={entries}
+    emptyStates={emptyStates}
+  />
+</BaseLayout>
