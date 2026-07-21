@@ -161,6 +161,7 @@ const showSubheads = isExperience && groups.length > 1;
 
     const autosaver = makeAutosaver({
       save: () => saveArea(areaName, Array.from(working.values())),
+      snapshot: () => JSON.stringify(Array.from(working.values())),
     });
 
     function fieldOf(el: HTMLElement): { id: string; field: keyof Entry } | null {
@@ -359,6 +360,7 @@ const showSubheads = isExperience && groups.length > 1;
 
       const emptyStatesAutosaver = makeAutosaver({
         save: () => saveArea('emptyStates', workingEmptyStates),
+        snapshot: () => JSON.stringify(workingEmptyStates),
       });
 
       emptyStateEl.addEventListener('input', () => {

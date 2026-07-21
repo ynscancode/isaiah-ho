@@ -6,6 +6,11 @@
 // contract) and senior-backend-dev-20260716T030500 (API contract, CSRF
 // delivery via the `csrf_token` cookie).
 
+// One-directional: history.ts never imports this module, so no cycle.
+// Used by makeAutosaver's flush() to suppress the per-step save/commit
+// during an undo/redo apply (tech-lead-20260720T164457Z).
+import { isApplying } from './history';
+
 export type SaveResult = { ok: boolean; commitSha?: string; error?: string; action?: string };
 
 function getCookie(name: string): string | null {
@@ -389,26 +394,38 @@ export type Autosaver = {
   markDirty: () => void;
   /** Call from a discrete-commit event (`<select>` change, picker/prompt
    * confirm, undo/redo apply, the Save button / `editor:save-all` path):
-   * saves now unconditionally (single-flight safe). This is the SOLE
-   * git-commit trigger. Returns a promise so callers that need to know when
-   * the save (and any trailing re-save chained onto it) has settled can
-   * await it. */
+   * saves now — UNLESS called while an undo/redo apply is in progress
+   * (`isApplying()`, tech-lead-20260720T164457Z), in which case it performs
+   * no save and only refreshes the dirty/saved status by VALUE. Otherwise
+   * unconditional + single-flight safe; this is the SOLE git-commit trigger.
+   * Returns a promise so callers that need to know when the save (and any
+   * trailing re-save chained onto it) has settled can await it. */
   flush: () => Promise<void>;
-  /** Call from a blur handler: saves now, but ONLY if a real edit happened
-   * since the last successful save (i.e. `markDirty` fired without an
-   * intervening `result.ok`). A focus+blur with no typing is a no-op — no
-   * `runSave`, no status broadcast, no commit (tech-lead-20260720T110251).
-   */
+  /** Call from a blur handler: saves now, but ONLY if the current working
+   * value actually differs from the last SAVED value (`isUnsaved()`,
+   * value-based — tech-lead-20260720T164457Z, supersedes the boolean-only
+   * `dirty` gate). A focus+blur with no typing is a no-op; so is a blur
+   * landing back on an undo/redo'd state that matches what's already saved.
+   * A blur on a state that differs from saved — whether from a real edit or
+   * from undo/redo landing somewhere new — still saves exactly once. */
   flushIfDirty: () => Promise<void>;
 };
 
 export function makeAutosaver({
   save,
+  snapshot,
 }: {
   /** Must build its payload from CURRENT working state at call time — the
    * autosaver may call this again for a trailing re-save after the working
    * state has changed further. Return the existing SaveResult contract. */
   save: () => Promise<SaveResult>;
+  /** Serializes the component's CURRENT working state to a comparable
+   * string (e.g. `() => JSON.stringify(working)`), for the value-based
+   * dirty-vs-saved comparison (tech-lead-20260720T164457Z §B). Must mirror
+   * the actual payload `save()` persists — if `save()` transforms/holds back
+   * part of `working` before sending, `snapshot` should apply the same
+   * transform, or the comparison won't track what's really saved. */
+  snapshot: () => string;
 }): Autosaver {
   const id = autosaverIdSeq++;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -416,8 +433,26 @@ export function makeAutosaver({
   let pendingResave = false;
   // tech-lead-20260720T110251: true once a real edit (markDirty) has
   // happened since the last SUCCESSFUL save. Cleared only on result.ok so a
-  // failed save never silently drops a genuinely-unsaved change.
+  // failed save never silently drops a genuinely-unsaved change. Kept for
+  // cheap per-keystroke status text ("Unsaved changes") — the AUTHORITATIVE
+  // save gate is now `isUnsaved()` below (tech-lead-20260720T164457Z); the
+  // two are kept in sync (never allowed to conflict) rather than merged,
+  // since `dirty` needs to flip true on every keystroke (cheap) while
+  // `isUnsaved()` re-serializes the whole working state (only called at
+  // discrete decision points: flush()/flushIfDirty()/refreshDirtyStatus()).
   let dirty = false;
+  // Value last successfully persisted by THIS autosaver, seeded at
+  // construction (on load, working === draft, so this starts in sync).
+  // Updated only on a confirmed result.ok — see runSave() below.
+  let lastSavedSnapshot = snapshot();
+
+  /** Value-based dirty check (the authoritative save gate) — true whenever
+   * the current working state differs from what was last actually saved,
+   * regardless of how it got that way (typing, or an undo/redo apply that
+   * landed on a different state than the draft). */
+  function isUnsaved(): boolean {
+    return snapshot() !== lastSavedSnapshot;
+  }
 
   // tech-lead-20260718T174921 Design A3: transient upstream failures
   // (503 github_unavailable from the server's retryable-GitHubApiError
@@ -466,6 +501,12 @@ export function makeAutosaver({
     }
     inFlight = true;
     setStatus('saving');
+    // Captured SYNCHRONOUSLY, before the await — the same `working`
+    // authority `save()` itself reads from at this call time (KB-0020-safe:
+    // no risk of a concurrent edit during the await corrupting what we
+    // compare against; a concurrent edit instead correctly makes the NEXT
+    // isUnsaved() check see fresh, still-unsaved state).
+    const sent = snapshot();
     let result: SaveResult;
     try {
       result = await save();
@@ -476,6 +517,7 @@ export function makeAutosaver({
 
     if (result.ok) {
       dirty = false;
+      lastSavedSnapshot = sent;
       clearRetryTimer();
       setStatus('saved');
     } else if (result.error === 'github_unavailable' || result.error === 'network_error') {
@@ -517,13 +559,37 @@ export function makeAutosaver({
     clearRetryTimer();
   }
 
+  /** Value-accurate refresh with NO save — used when flush() is called
+   * mid-undo/redo apply (see flush() below). Keeps the status banner AND
+   * the beforeunload `unsavedAreas` membership (driven by setStatus, see
+   * above) truthful about whether the just-applied state actually differs
+   * from what's saved, without performing (or scheduling) a real save. */
+  function refreshDirtyStatus() {
+    if (isUnsaved()) {
+      dirty = true;
+      setStatus('dirty');
+    } else {
+      dirty = false;
+      setStatus('saved');
+    }
+  }
+
   async function flush(): Promise<void> {
+    if (isApplying()) {
+      // undo()/redo() just wrote `working` via controller.apply(); every
+      // field's onApply still unconditionally calls autosaver.flush(), but
+      // per the decoupled model (tech-lead-20260720T164457Z) an apply must
+      // NEVER perform a real save/commit — only reconcile the visible
+      // dirty/saved status against the new in-memory value.
+      refreshDirtyStatus();
+      return;
+    }
     clearRetryTimer();
     await runSave();
   }
 
   async function flushIfDirty(): Promise<void> {
-    if (!dirty) return;
+    if (!isUnsaved()) return;
     await flush();
   }
 

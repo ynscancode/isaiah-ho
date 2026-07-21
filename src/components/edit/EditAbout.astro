@@ -82,7 +82,7 @@ const { about } = Astro.props;
       return result;
     }
 
-    const autosaver = makeAutosaver({ save: saveAbout });
+    const autosaver = makeAutosaver({ save: saveAbout, snapshot: () => JSON.stringify(working) });
 
     // The stale_form 409 reload affordance now flows through the shared
     // editor:stale-form event (dispatched by the autosaver on that error)

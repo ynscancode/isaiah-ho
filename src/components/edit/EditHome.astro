@@ -205,6 +205,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
 
     const autosaver = makeAutosaver({
       save: () => saveArea(AREA, working),
+      snapshot: () => JSON.stringify(working),
     });
 
     // ---- Hero-graphic preview switcher + confirm-to-save ----
@@ -613,6 +614,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
 
     const emptyStatesAutosaver = makeAutosaver({
       save: () => saveArea('emptyStates', workingEmptyStates),
+      snapshot: () => JSON.stringify(workingEmptyStates),
     });
 
     highlightsEmptyStateEl.addEventListener('input', () => {
