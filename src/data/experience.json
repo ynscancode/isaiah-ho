@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "mru8q7o9ff6h",
+    "slug": "entry-mru8q7o9ff6h",
+    "category": "Leadership",
+    "startDate": "2024-12-01",
+    "endDate": "2025-12-31",
+    "title": "Honorary Finance Secretary (SMU Ultimate Frisbee)",
+    "body": "Executive Committee for SMU Ultimate Frisbee",
+    "detail": "• Managed club budgeting, cashflow tracking, stakeholder management and reimbursement processes\nto ensure smooth operations for trainings and club activities.  \n\n• Planned, budgeted and executed SMU Ultimate Frisbee Club’s flagship annual ultimate frisbee\ntournament with ~300 attendees."
+  },
+  {
+    "id": "mrud53piu9ns",
+    "slug": "entry-mrud53piu9ns",
+    "category": "Leadership",
+    "startDate": "2025-03-01",
+    "endDate": "2025-08-31",
+    "title": "Deputy Director of Finance (SMU Waikiki 2025)",
+    "body": "Organising committee for Waikiki 2025, SMU Sports Union’s flagship annual beach event",
+    "detail": "• Oversaw budgeting and expense control for SMU Sports Union’s flagship annual beach event with\n~1000 attendees.  \n\n• Managed ticketing systems, vendor payments, and post-event financial reconciliation."
+  },
+  {
+    "id": "mrud9hhvfm2v",
+    "slug": "entry-mrud9hhvfm2v",
+    "category": "Work",
+    "startDate": "2025-08-01",
+    "endDate": "2026-04-30",
+    "title": "Associate Consultant (Thrive Social Consulting)",
+    "body": "Pro bono project based consulting for non profit organisations, including ESG, donor engagement and programme analysis",
+    "detail": "• Synthesised stakeholder interviews and secondary research into structured recommendations for management.  \n\n• Co-developed a tailored ESG framework with measurable indicators to guide impact reporting.  \n\n• Conducted research on donor engagement and retention for a flagship community programme.  \n\n• Developed a donor pitchbook to support corporate outreach and long-term partnership building."
+  }
+]
