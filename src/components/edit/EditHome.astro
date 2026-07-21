@@ -103,13 +103,13 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       <span class="graphic-picker-hint">Pick the projects and posts shown on the homepage, and the order they appear in (up to {HIGHLIGHTS_CAP}).</span>
     </div>
 
-    <div class="highlights-section">
+    <div class="highlights-section highlights-section-selected">
       <h3 class="highlights-subhead mono">Selected</h3>
       <div data-highlights-selected-groups></div>
       <p class="editor-note" data-highlights-empty-note hidden>Nothing selected yet — add from the pool below.</p>
     </div>
 
-    <div class="highlights-section">
+    <div class="highlights-section highlights-section-pool">
       <h3 class="highlights-subhead mono">Add more</h3>
       <p class="highlights-cap-note mono" data-highlights-cap-note hidden>Highlights is at its limit ({HIGHLIGHTS_CAP}) — remove one to add another.</p>
       <ul class="highlights-pool" data-highlights-pool></ul>
@@ -498,6 +498,12 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
       const controls = document.createElement('span');
       controls.className = 'highlights-row-controls';
 
+      // Move up/down grouped together, separated from the destructive
+      // Remove control by a thin divider (ui-ux-designer-20260721T050000Z
+      // #16) — same aria-labels/logic as before, layout-only change.
+      const moveGroup = document.createElement('span');
+      moveGroup.className = 'highlights-row-move-group';
+
       const upBtn = document.createElement('button');
       upBtn.type = 'button';
       upBtn.className = 'highlights-move-btn';
@@ -510,7 +516,7 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
         swapHighlights(flatIndex, neighborIndex);
         commitHighlights();
       });
-      controls.appendChild(upBtn);
+      moveGroup.appendChild(upBtn);
 
       const downBtn = document.createElement('button');
       downBtn.type = 'button';
@@ -524,7 +530,8 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
         swapHighlights(flatIndex, neighborIndex);
         commitHighlights();
       });
-      controls.appendChild(downBtn);
+      moveGroup.appendChild(downBtn);
+      controls.appendChild(moveGroup);
 
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
@@ -750,6 +757,14 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     color: var(--slate, #5b6472);
   }
 
+  /* Selected reads as the primary/committed section (--ink, a touch more
+     weight); Add more stays at the shared --slate secondary treatment
+     (ui-ux-designer-20260721T050000Z #12b). One-line override, no new
+     class family. */
+  .highlights-section-selected .highlights-subhead {
+    color: var(--ink, #12182b);
+  }
+
   /* Selected-list Projects/Blog grouping (tech-lead-20260720T160424Z item 4
      / ui-ux-designer-20260721T050000Z #8) — nested <h4> group subhead,
      reusing the same mono + --signal-text "group subhead" primitive as the
@@ -794,7 +809,18 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     border: 1px solid var(--line, #d8d3c7);
     border-radius: 4px;
     padding: 0.6rem 0.8rem;
+  }
+
+  /* Selected = committed/"the real thing" (crisp white). Add-more pool =
+     available inventory, visually recessed (--paper) — same convention the
+     rest of the site uses for background/available vs. foreground/real
+     surfaces (ui-ux-designer-20260721T050000Z #12a). */
+  .highlights-row {
     background: #fff;
+  }
+
+  .highlights-pool-row {
+    background: var(--paper, #f5f3ee);
   }
 
   .highlights-position {
@@ -848,8 +874,16 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     cursor: not-allowed;
   }
 
-  .highlights-remove-btn {
-    position: static;
+  /* Move controls vs. Remove — thin divider so a destructive click can't be
+     made by accident while reaching for Move up/down (ui-ux-designer-
+     20260721T050000Z #16). Reuses --line, no new token. */
+  .highlights-row-move-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-right: 0.6rem;
+    margin-right: 0.6rem;
+    border-right: 1px solid var(--line, #d8d3c7);
   }
 
   .highlights-pool-info {
@@ -872,6 +906,15 @@ const GRAPHIC_LABELS: Record<HeroVariant, string> = {
     margin-top: 0;
     padding: 0.4rem 0.8rem;
     font-size: 0.78rem;
+  }
+
+  /* Gap fix — capped "+Add" was programmatically disabled (addBtn.disabled
+     = atCap) but had no visual disabled state; same values as
+     .highlights-move-btn:disabled for consistency (ui-ux-designer-
+     20260721T050000Z #14). */
+  .highlights-add-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .highlights-cap-note {
