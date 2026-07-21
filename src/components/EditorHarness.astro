@@ -372,7 +372,7 @@ const { contentSource } = Astro.props;
     pollPreviewStatus,
     publishDraft,
   } from '../lib/editor/client';
-  import { canRedo, canUndo, redo, undo } from '../lib/editor/history';
+  import { canRedo, canUndo, commitActive, redo, undo } from '../lib/editor/history';
 
   const statusText = document.getElementById('editor-status-text');
   const message = document.getElementById('editor-message');
@@ -398,8 +398,21 @@ const { contentSource } = Astro.props;
   syncHistoryButtons();
   window.addEventListener('editor:history-changed', syncHistoryButtons);
 
-  undoBtn?.addEventListener('click', () => undo());
-  redoBtn?.addEventListener('click', () => redo());
+  // Bug 2a: commit whatever field is currently focused (if it actually
+  // changed) BEFORE undo()/redo() reads the stack — the mousedown guard
+  // above stops these buttons from stealing focus/blurring the field, so
+  // without this a just-typed, not-yet-committed edit would be skipped by
+  // undo() (which pops an older step instead) and NOT flushed to git (no
+  // per-step save is added here — commitActive() only pushes an in-memory
+  // history step, same as a normal blur would have).
+  undoBtn?.addEventListener('click', () => {
+    commitActive();
+    undo();
+  });
+  redoBtn?.addEventListener('click', () => {
+    commitActive();
+    redo();
+  });
 
   // Nice-to-have keyboard shortcuts (ui-ux-designer-20260718T103000): only
   // fire when focus is OUTSIDE an input/textarea/contenteditable, so the

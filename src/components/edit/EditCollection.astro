@@ -156,6 +156,9 @@ const showSubheads = isExperience && groups.length > 1;
     // Re-bind to a narrowed const: TS doesn't retain the `area !== null`
     // narrowing for a variable captured by the nested save() closure below.
     const areaName: 'projects' | 'experience' = area;
+    // Same narrowing loss as areaName above, but for `sink` — captured by
+    // the row controller's undo-of-delete restore closure (Bug 2b) below.
+    const sinkEl: HTMLElement = sink;
     const seed = ((window as unknown as { __editorSeed: Record<string, Entry[]> }).__editorSeed?.[areaName] ?? []) as Entry[];
     const working = new Map<string, Entry>(seed.map((entry) => [entry.id, { ...entry }]));
 
@@ -245,9 +248,90 @@ const showSubheads = isExperience && groups.length > 1;
       selection.addRange(range);
     }
 
+    const template = document.getElementById(`tpl-${area}-card`) as HTMLTemplateElement | null;
+
+    // Bug 2b: shared "build an empty card DOM node from the <template>"
+    // logic — used by both the "+ Add" handler and the row controller's
+    // undo-of-delete restore path below, so the two ways a card can be
+    // (re)created never drift apart.
+    function buildSlotFromTemplate(id: string): HTMLElement | null {
+      if (!template) return null;
+      const fragment = template.content.cloneNode(true) as DocumentFragment;
+      const html = fragment.querySelector('.card-slot')!.outerHTML.split('__ID__').join(id);
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      return wrapper.firstElementChild as HTMLElement;
+    }
+
+    // Bug 2b: populate a freshly-built (empty-field) slot's editable DOM
+    // from a restored `entry` — the "+ Add" path never needs this (it seeds
+    // a genuinely empty entry, product-owner-20260717T200000 Decision 4),
+    // but restoring a deleted entry has real values to write back in.
+    function populateSlotFields(slot: HTMLElement, entry: Entry): void {
+      slot.querySelectorAll<HTMLElement>('[contenteditable="true"][data-editable]').forEach((el) => {
+        const target = fieldOf(el);
+        if (!target) return;
+        const value = (entry as unknown as Record<string, unknown>)[target.field];
+        writeEditable(el, typeof value === 'string' ? value : '');
+      });
+      slot.querySelectorAll<HTMLInputElement>('input[type="date"][data-editable]').forEach((el) => {
+        const target = fieldOf(el);
+        if (!target) return;
+        const value = (entry as unknown as Record<string, unknown>)[target.field];
+        el.value = typeof value === 'string' ? value : '';
+      });
+      const hrefValueEl = slot.querySelector('[data-editable-href-value]');
+      if (hrefValueEl) hrefValueEl.textContent = entry.href && entry.href.length > 0 ? entry.href : '(none)';
+    }
+
     function wireSlot(slot: HTMLElement) {
       const entryId = slot.getAttribute('data-entry-id');
       const historyIds: string[] = [];
+
+      // Bug 2b: structural delete/undo controller — models "this card
+      // exists in `working` and the DOM" as its own history step, distinct
+      // from any single field's value, using the EXISTING commitAtomic/
+      // register/undo/redo machinery (ZERO changes to history.ts's stack
+      // logic). Registered on every wireSlot() call (including a restore)
+      // and — unlike the field controllers below — deliberately NEVER
+      // unregistered by the delete handler: history.ts already makes
+      // undo/redo of an unregistered id a documented no-op, so unregistering
+      // this one would make a deletion permanently un-undoable.
+      if (entryId) {
+        const rowId = `${areaName}:${entryId}.__row__`;
+        register({
+          id: rowId,
+          read: () => (working.has(entryId) ? JSON.stringify(working.get(entryId)) : ''),
+          apply: (value) => {
+            if (value === '') {
+              // Redo of a delete: remove this card the same way the real
+              // delete handler below does, using the field ids THIS
+              // wireSlot() call registered (closure `slot`/`historyIds`).
+              working.delete(entryId);
+              slot.remove();
+              historyIds.forEach((historyId) => unregister(historyId));
+              unregister(`${areaName}:${entryId}.href`);
+              void autosaver.flush(); // undo/redo apply — short-circuits to a status refresh, no save (isApplying())
+              return;
+            }
+            // Undo of a delete: recreate the card exactly like "+ Add"
+            // does — rebuild from the <template>, populate its fields with
+            // the restored entry, then wireSlot() it so its field
+            // controllers (and its own row controller) are re-registered.
+            const entry = JSON.parse(value) as Entry;
+            working.set(entryId, entry);
+            const rebuilt = buildSlotFromTemplate(entryId);
+            if (!rebuilt) return;
+            // Restored card lands in `sink` — same placement "+ Add" uses,
+            // not its original category group (grouping is load-time only,
+            // tech-lead-20260721T154444 Bug 2b note / USER DECISION 1).
+            sinkEl.appendChild(rebuilt);
+            populateSlotFields(rebuilt, entry);
+            wireSlot(rebuilt);
+            void autosaver.flush(); // undo/redo apply — short-circuits, no save (isApplying())
+          },
+        });
+      }
 
       // contenteditable text fields (category/title/body/detail)
       slot.querySelectorAll<HTMLElement>('[contenteditable="true"][data-editable]').forEach((el) => {
@@ -384,10 +468,18 @@ const showSubheads = isExperience && groups.length > 1;
         const id = removeBtn.getAttribute('data-remove-entry');
         if (!id) return;
         if (!window.confirm('Remove this entry? It will be deleted from the draft on next save.')) return;
+        // Bug 2b: capture the pre-delete entry BEFORE removing it, so the
+        // structural row controller registered above can restore it on
+        // undo. Real (non-applying) delete — this is the ONLY place a
+        // deletion's git-save actually happens (the discrete flush below);
+        // the row controller's own apply() only ever runs during undo()/
+        // redo(), which short-circuit that same flush() via isApplying().
+        const serialized = JSON.stringify(working.get(id));
         working.delete(id);
         slot.remove();
         historyIds.forEach((historyId) => unregister(historyId));
-        if (entryId) unregister(`${areaName}:${entryId}.href`);
+        unregister(`${areaName}:${id}.href`);
+        commitAtomic(`${areaName}:${id}.__row__`, serialized, '');
         void autosaver.flush(); // deletion — discrete commit
       });
     }
@@ -395,15 +487,10 @@ const showSubheads = isExperience && groups.length > 1;
     list.querySelectorAll<HTMLElement>('.card-slot').forEach(wireSlot);
 
     const addBtn = document.getElementById(`add-${area}-entry`);
-    const template = document.getElementById(`tpl-${area}-card`) as HTMLTemplateElement | null;
     addBtn?.addEventListener('click', () => {
-      if (!template) return;
       const id = uniqueId();
-      const fragment = template.content.cloneNode(true) as DocumentFragment;
-      const html = fragment.querySelector('.card-slot')!.outerHTML.split('__ID__').join(id);
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = html;
-      const slot = wrapper.firstElementChild as HTMLElement;
+      const slot = buildSlotFromTemplate(id);
+      if (!slot) return;
       // `addBtn` is a sibling of `list` (or, when grouped, of the outer
       // wrapper) — append to `sink` (the flat grid, or the trailing
       // "pending" grid when grouped) rather than insertBefore(addBtn).

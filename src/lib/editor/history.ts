@@ -43,6 +43,15 @@ const lastValue = new Map<string, string>();
 let undoStack: Step[] = [];
 let redoStack: Step[] = [];
 
+/** Bug 2a (senior-frontend-dev-20260721, tech-lead-20260721T154444 root
+ * cause): id of the field currently focused, if any — set by a `focus`
+ * listener `wireField()` adds below, cleared on `blur`. With the mousedown
+ * guard (above) stopping the Undo/Redo toolbar buttons from stealing focus,
+ * clicking one right after typing produces NO blur, so the just-typed edit
+ * is never committed and `undo()` pops an older/nonexistent step instead of
+ * the real latest change. `commitActive()` closes that gap explicitly. */
+let activeId: string | null = null;
+
 /** Cap on in-memory undo steps (FIFO — oldest evicted first). Keeps the
  * client-side, reload-discarded history bounded for an unbounded editing
  * session; redoStack needs no separate cap — see commit()/commitAtomic(). */
@@ -201,6 +210,15 @@ export function canRedo(): boolean {
   return redoStack.length > 0;
 }
 
+/** Bug 2a fix: commit the currently-focused field's pending edit, if any,
+ * before undo()/redo() run. A no-op when nothing is focused (`activeId`
+ * null) or the focused field hasn't actually changed (`commit()`'s own
+ * from===to no-op) — so it never manufactures a spurious step, and never
+ * clears `redoStack` unless there was a genuine pending edit to capture. */
+export function commitActive(): void {
+  if (activeId) commit(activeId);
+}
+
 /** Convenience wiring for the common case: a text-ish DOM element (input,
  * textarea, select, or a contenteditable) whose value is read/written via
  * plain string get/set functions, committed on `blur` (or `change` for a
@@ -226,4 +244,13 @@ export function wireField(opts: {
     },
   });
   el.addEventListener(opts.commitEvent ?? 'blur', () => commit(id));
+  // Bug 2a: track which field is focused so commitActive() (called by
+  // EditorHarness's Undo/Redo button handlers) can commit a pending,
+  // not-yet-blurred edit before undo()/redo() reads the stack.
+  el.addEventListener('focus', () => {
+    activeId = id;
+  });
+  el.addEventListener('blur', () => {
+    if (activeId === id) activeId = null;
+  });
 }
