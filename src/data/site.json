@@ -17,10 +17,6 @@
     "highlights": [
       {
         "type": "project",
-        "ref": "market-entry-fnb"
-      },
-      {
-        "type": "project",
         "ref": "sme-digitalisation-grants"
       }
     ]
