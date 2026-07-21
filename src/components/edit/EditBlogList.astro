@@ -74,6 +74,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
 
     const emptyStatesAutosaver = makeAutosaver({
       save: () => saveArea('emptyStates', workingEmptyStates),
+      snapshot: () => JSON.stringify(workingEmptyStates),
     });
 
     emptyStateEl.addEventListener('input', () => {

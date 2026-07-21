@@ -118,7 +118,7 @@ const { post, isNew } = Astro.props;
       return result;
     }
 
-    const autosaver = makeAutosaver({ save: saveBlogPost });
+    const autosaver = makeAutosaver({ save: saveBlogPost, snapshot: () => JSON.stringify(working) });
 
     const titleEl = document.getElementById('post-title') as HTMLInputElement;
     const descEl = document.getElementById('post-description') as HTMLInputElement;

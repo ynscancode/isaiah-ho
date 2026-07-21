@@ -256,6 +256,28 @@ const { contentSource } = Astro.props;
     cursor: pointer;
   }
 
+  /* EditHome.astro's Highlights rows build their Remove buttons via
+     document.createElement with class="card-remove-btn highlights-remove-btn"
+     to reuse .card-remove-btn's red/mono visual styling without duplicating
+     it — but they need position:static instead of .card-remove-btn's
+     absolute top-right placement, since a .highlights-row list item is
+     never position:relative the way Card.astro's own wrapper is. EditHome's
+     OWN <style> block cannot supply that override: it's scoped CSS, and
+     Astro only stamps the data-astro-cid scoping attribute onto markup its
+     compiler emits, never onto elements created at runtime via
+     createElement — so a scoped `.highlights-remove-btn { position: static }`
+     silently never matches these buttons, and .card-remove-btn's absolute
+     positioning wins, floating the button to the top-right corner of the
+     whole page (senior-frontend-dev-20260721 investigation). This override
+     lives here instead, in the one stylesheet that's genuinely global
+     (is:global, same reason .card-remove-btn itself lives here), so it
+     actually reaches the dynamically-created button; same specificity as
+     .card-remove-btn (one class each), so source order — this rule after
+     .card-remove-btn — is what makes it win. */
+  .highlights-remove-btn {
+    position: static;
+  }
+
   .card-href-field {
     margin: 0.8rem 0 0;
     font-size: 0.68rem;

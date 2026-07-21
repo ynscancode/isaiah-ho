@@ -4,11 +4,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Band from '../components/Band.astro';
 import Card from '../components/Card.astro';
 import { deriveEyebrow } from '../lib/eyebrow';
+import { groupByCategory } from '../lib/experienceGroups';
 
 const experience = await getCollection('experience');
 
 const emptyStatesEntry = await getEntry('site', 'emptyStates');
 const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
+
+// tech-lead-20260720T160424Z Item 3 — dynamic, data-driven category
+// grouping (no hardcoded category enum; see src/lib/experienceGroups.ts).
+// ui-ux-designer-20260721T050000Z decision 4: when there is exactly one
+// group (or zero), suppress subheaders entirely — render is pixel-identical
+// to the pre-grouping flat list.
+const groups = groupByCategory(experience, (exp) => exp.data.category);
+const showSubheads = groups.length > 1;
 ---
 
 <BaseLayout
@@ -19,18 +28,38 @@ const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
     <h1>Experience</h1>
     {
       experience.length > 0 ? (
-        <div class="cards">
-          {experience.map((exp) => (
-            <div id={exp.data.slug}>
-              <Card
-                eyebrow={deriveEyebrow(exp.data.category, exp.data.startDate, exp.data.endDate)}
-                title={exp.data.title}
-                body={exp.data.body}
-                href={`/experience/${exp.data.slug}`}
-              />
+        showSubheads ? (
+          groups.map((group) => (
+            <div class="category-group">
+              <h2 class="mono group-subhead">{group.category}</h2>
+              <div class="cards">
+                {group.entries.map((exp) => (
+                  <div id={exp.data.slug}>
+                    <Card
+                      eyebrow={deriveEyebrow(exp.data.category, exp.data.startDate, exp.data.endDate)}
+                      title={exp.data.title}
+                      body={exp.data.body}
+                      href={`/experience/${exp.data.slug}`}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          ))
+        ) : (
+          <div class="cards">
+            {experience.map((exp) => (
+              <div id={exp.data.slug}>
+                <Card
+                  eyebrow={deriveEyebrow(exp.data.category, exp.data.startDate, exp.data.endDate)}
+                  title={exp.data.title}
+                  body={exp.data.body}
+                  href={`/experience/${exp.data.slug}`}
+                />
+              </div>
+            ))}
+          </div>
+        )
       ) : (
         <p class="empty-state">{emptyStateText}</p>
       )
@@ -42,5 +71,30 @@ const emptyStateText = emptyStatesEntry?.data.experience ?? 'Coming soon.';
   h1 {
     font-size: 2rem;
     margin: 0 0 0.5rem;
+  }
+
+  /* ui-ux-designer-20260721T050000Z Item 3.1 — group subhead rhythm.
+     Page-scoped: does NOT touch the shared global .cards rule (sitewide,
+     used by projects/blog/highlights too). */
+  .category-group {
+    margin-top: 2.5rem;
+  }
+
+  .category-group:first-of-type {
+    margin-top: 2rem;
+  }
+
+  .category-group:not(:first-of-type) {
+    border-top: 1px solid var(--line);
+    padding-top: 2rem;
+  }
+
+  .category-group .cards {
+    margin-top: 1.25rem;
+  }
+
+  .group-subhead {
+    color: var(--signal-text);
+    margin: 0 0 0.6rem;
   }
 </style>

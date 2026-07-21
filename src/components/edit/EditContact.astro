@@ -94,20 +94,32 @@ const { contact, emptyStates } = Astro.props;
       hintEl.hidden = !held;
     }
 
+    // Shared by save() and snapshot() below so the value-based dirty
+    // comparison (tech-lead-20260720T164457Z) compares against the SAME
+    // held-value logic that actually gets persisted — a link with an
+    // incomplete URL/email held back at its last-persisted value must not
+    // register as "unsaved" just because the raw in-progress `working`
+    // value differs from `lastSavedSnapshot` (Design B, tech-lead-
+    // 20260718T174921, unchanged).
+    function buildPayload(): { lede: string; links: ContactLink[] } {
+      const payloadLinks = Array.from(working.values()).map((link) => {
+        const persistable = isPersistableContactValue(link.type, link.value);
+        const value = persistable ? link.value : (lastPersistedValue.get(link.id) ?? '');
+        return { ...link, value };
+      });
+      return { lede: ledeEl!.textContent ?? '', links: payloadLinks };
+    }
+
     const autosaver = makeAutosaver({
       save: async () => {
-        const payloadLinks = Array.from(working.values()).map((link) => {
-          const persistable = isPersistableContactValue(link.type, link.value);
-          const value = persistable ? link.value : (lastPersistedValue.get(link.id) ?? '');
-          return { ...link, value };
-        });
-        const payload = { lede: ledeEl!.textContent ?? '', links: payloadLinks };
+        const payload = buildPayload();
         const result = await saveArea(AREA, payload);
         if (result.ok) {
-          for (const link of payloadLinks) lastPersistedValue.set(link.id, link.value);
+          for (const link of payload.links) lastPersistedValue.set(link.id, link.value);
         }
         return result;
       },
+      snapshot: () => JSON.stringify(buildPayload()),
     });
 
     ledeEl.addEventListener('input', () => {
@@ -316,6 +328,7 @@ const { contact, emptyStates } = Astro.props;
 
     const emptyStatesAutosaver = makeAutosaver({
       save: () => saveArea('emptyStates', workingEmptyStates),
+      snapshot: () => JSON.stringify(workingEmptyStates),
     });
 
     emptyStateEl.addEventListener('input', () => {

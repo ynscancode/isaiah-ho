@@ -58,6 +58,18 @@ const highlightsEmptyText =
   typeof emptyStatesEntry?.data.highlights === 'string'
     ? emptyStatesEntry.data.highlights
     : 'No highlights selected yet — check back soon.';
+
+// Group-by-type render (tech-lead-20260720T160424Z item 4, ratified /
+// ui-ux-designer-20260721T050000Z #6-#7). Pure render-time partition of the
+// already-resolved, manually-ordered `highlights` — no data/schema change.
+// Manual order is preserved WITHIN each type-group. Fail-soft: an empty
+// type-group renders nothing (no heading, no grid, no gap). Lone-subhead
+// suppression: when only one of the two groups is populated, that group's
+// cards render directly under <h2>Highlights</h2> with no "Projects"/"Blog"
+// subhead — today's homepage (Blog empty) is visually unchanged.
+const projectHighlights = highlights.filter((item) => item.kind === 'project');
+const blogHighlights = highlights.filter((item) => item.kind === 'blog');
+const showBothSubheads = projectHighlights.length > 0 && blogHighlights.length > 0;
 ---
 
 <BaseLayout
@@ -74,24 +86,70 @@ const highlightsEmptyText =
     <HeroGraphic slot="matrix" default={hero.graphic ?? 'synthesis'} />
   </Hero>
 
-  <Band variant="paper" eyebrow="Highlights">
+  <Band variant="paper">
     <h2>Highlights</h2>
     {
       highlights.length > 0 ? (
-        <div class="cards">
-          {highlights.map((item) => (
-            <Card
-              eyebrow={item.eyebrow}
-              title={item.title}
-              body={item.body}
-              href={item.href}
-              tags={item.kind === 'blog' ? item.tags : undefined}
-            />
-          ))}
-        </div>
+        <Fragment>
+          {projectHighlights.length > 0 && (
+            <div class={showBothSubheads ? 'subgroup subgroup--labeled' : 'subgroup'}>
+              {showBothSubheads && <h3 class="mono group-subhead">Projects</h3>}
+              <div class="cards">
+                {projectHighlights.map((item) => (
+                  <Card
+                    eyebrow={item.eyebrow}
+                    title={item.title}
+                    body={item.body}
+                    href={item.href}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {blogHighlights.length > 0 && (
+            <div class={showBothSubheads ? 'subgroup subgroup--labeled' : 'subgroup'}>
+              {showBothSubheads && <h3 class="mono group-subhead">Blog</h3>}
+              <div class="cards">
+                {blogHighlights.map((item) => (
+                  <Card
+                    eyebrow={item.eyebrow}
+                    title={item.title}
+                    body={item.body}
+                    href={item.href}
+                    tags={item.tags}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </Fragment>
       ) : (
         <p class="empty-state">{highlightsEmptyText}</p>
       )
     }
   </Band>
 </BaseLayout>
+
+<style>
+  /* Highlights Projects/Blog subgroups (tech-lead-20260720T160424Z item 4 /
+     ui-ux-designer-20260721T050000Z #6-#7). Reuses the "group subhead"
+     primitive (mono + --signal-text, same family as Band's own .eyebrow).
+     Lone-subhead suppression (no `subgroup--labeled` class) keeps the
+     single-group case pixel-identical to the pre-grouping render: no extra
+     margin, .cards keeps the sitewide 2rem margin-top from global.css. */
+  .subgroup:not(:first-of-type) {
+    margin-top: 2rem;
+    border-top: 1px solid var(--line);
+    padding-top: 2rem;
+  }
+
+  .group-subhead {
+    margin: 0 0 0.6rem;
+    color: var(--signal-text);
+  }
+
+  .subgroup--labeled .cards {
+    margin-top: 1.25rem;
+  }
+</style>
+
