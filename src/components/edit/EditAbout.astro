@@ -124,7 +124,7 @@ const { about } = Astro.props;
     });
 
     window.addEventListener('editor:save-all', () => {
-      void autosaver.flush();
+      void autosaver.flushIfDirty();
     });
 
     // --- Profile image upload widget ---

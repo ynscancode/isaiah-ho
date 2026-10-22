@@ -140,12 +140,13 @@ const heroHidden = {
   // see the Props comment above. The empty-state text field stays
   // read-only (no save wiring) while this is null, so partial data can
   // never clobber the other four saved empty-state messages.
-  window.__editorSeed.emptyStates = seedEmptyStates;
+  if (seedEmptyStates) window.__editorSeed.emptyStates = seedEmptyStates;
 </script>
 
 <script>
   import { makeAutosaver, saveArea, sanitizeHeadlineHtml, setPath } from '../../lib/editor/client';
   import { commit, register } from '../../lib/editor/history';
+  import { getEmptyStatesStore } from '../../lib/editor/emptyStatesStore';
   import type {
     HighlightRef,
     HighlightsProjectPoolItem,
@@ -499,7 +500,7 @@ const heroHidden = {
     renderHighlights();
 
     window.addEventListener('editor:save-all', () => {
-      void autosaver.flush();
+      void autosaver.flushIfDirty();
     });
   }
 
@@ -515,33 +516,19 @@ const heroHidden = {
   // itself stays visible (read-only) either way so the current value is
   // never hidden from Isaiah.
   const highlightsEmptyStateEl = document.getElementById('home-highlights-empty-state-text') as HTMLInputElement | null;
-  const seedEmptyStates = (
-    window as unknown as {
-      __editorSeed: {
-        emptyStates: { projects: string; experience: string; blog: string; contact: string; highlights: string } | null;
-      };
-    }
-  ).__editorSeed?.emptyStates ?? null;
+  // ONE page-wide store/autosaver shared with every other emptyStates field
+  // (tech-lead-20261022T122044 D4). Null (partial/absent seed) => the field
+  // stays read-only/unwired, exactly as before.
+  const emptyStatesStore = getEmptyStatesStore();
 
-  if (highlightsEmptyStateEl && seedEmptyStates) {
-    const workingEmptyStates = { ...seedEmptyStates };
-
-    const emptyStatesAutosaver = makeAutosaver({
-      save: () => saveArea('emptyStates', workingEmptyStates),
-      snapshot: () => JSON.stringify(workingEmptyStates),
-    });
-
+  if (highlightsEmptyStateEl && emptyStatesStore) {
     highlightsEmptyStateEl.addEventListener('input', () => {
-      workingEmptyStates.highlights = highlightsEmptyStateEl.value;
-      emptyStatesAutosaver.markDirty();
+      emptyStatesStore.working.highlights = highlightsEmptyStateEl.value;
+      emptyStatesStore.autosaver.markDirty();
     });
 
     highlightsEmptyStateEl.addEventListener('blur', () => {
-      void emptyStatesAutosaver.flushIfDirty();
-    });
-
-    window.addEventListener('editor:save-all', () => {
-      void emptyStatesAutosaver.flush();
+      void emptyStatesStore.autosaver.flushIfDirty();
     });
   }
 </script>

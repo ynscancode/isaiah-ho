@@ -3,6 +3,7 @@ import EditHeader from './EditHeader.astro';
 import EditableExperienceRow from './EditableExperienceRow.astro';
 import EditableProjectCard from './EditableProjectCard.astro';
 import { groupByCategory } from '../../lib/experienceGroups';
+import type { EmptyStates } from '../../lib/editor/emptyStatesStore';
 
 export type CollectionEntry = {
   id: string;
@@ -19,7 +20,7 @@ export type CollectionEntry = {
 export type Props = {
   area: 'projects' | 'experience';
   entries: CollectionEntry[];
-  emptyStates: { projects: string; experience: string; blog: string; contact: string };
+  emptyStates: EmptyStates;
   /** Canonical persisted category order for THIS area, from site.json's
    * `ordering` entry (tech-lead-20260729T162747). Absent entry reads as []. */
   categoryOrder: string[];
@@ -205,6 +206,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
 
 <script>
   import { makeAutosaver, saveArea, slugify, uniqueId } from '../../lib/editor/client';
+  import { getEmptyStatesStore } from '../../lib/editor/emptyStatesStore';
   import { commitActive, commitAtomic, register, unregister, wireField } from '../../lib/editor/history';
   import { groupByCategory, normalizeCategoryOrder, reorderCategory } from '../../lib/experienceGroups';
 
@@ -876,8 +878,8 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
     });
 
     window.addEventListener('editor:save-all', () => {
-      void autosaver.flush();
-      void orderAutosaver.flush();
+      void autosaver.flushIfDirty();
+      void orderAutosaver.flushIfDirty();
     });
   }
 
@@ -885,16 +887,12 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
   if (area) {
     const areaName: 'projects' | 'experience' = area;
     const emptyStateEl = document.getElementById(`empty-state-text-${areaName}`) as HTMLInputElement | null;
-    if (emptyStateEl) {
-      const seedEmptyStates = (
-        window as unknown as { __editorSeed: { emptyStates?: { projects: string; experience: string; blog: string; contact: string } } }
-      ).__editorSeed.emptyStates ?? { projects: '', experience: '', blog: '', contact: '' };
-      const workingEmptyStates = { ...seedEmptyStates };
-
-      const emptyStatesAutosaver = makeAutosaver({
-        save: () => saveArea('emptyStates', workingEmptyStates),
-        snapshot: () => JSON.stringify(workingEmptyStates),
-      });
+    // ONE page-wide store/autosaver shared by every emptyStates field
+    // (tech-lead-20261022T122044 D4); null (partial seed) => field unwired.
+    const emptyStatesStore = getEmptyStatesStore();
+    if (emptyStateEl && emptyStatesStore) {
+      const workingEmptyStates = emptyStatesStore.working;
+      const emptyStatesAutosaver = emptyStatesStore.autosaver;
 
       emptyStateEl.addEventListener('input', () => {
         workingEmptyStates[areaName] = emptyStateEl.value;
@@ -918,10 +916,6 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
       // this second blur listener (registered after) fires next.
       emptyStateEl.addEventListener('blur', () => {
         void emptyStatesAutosaver.flushIfDirty();
-      });
-
-      window.addEventListener('editor:save-all', () => {
-        void emptyStatesAutosaver.flush();
       });
     }
   }

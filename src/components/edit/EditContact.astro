@@ -7,6 +7,7 @@
 // client script builds with innerHTML are styled too.
 import EditHeader from './EditHeader.astro';
 import { isPersistableContactValue } from '../../lib/contactValue';
+import type { EmptyStates } from '../../lib/editor/emptyStatesStore';
 
 export type ContactLink = {
   id: string;
@@ -17,7 +18,7 @@ export type ContactLink = {
 
 export type Props = {
   contact: { lede: string; links: ContactLink[] };
-  emptyStates: { projects: string; experience: string; blog: string; contact: string };
+  emptyStates: EmptyStates;
 };
 
 const { contact, emptyStates } = Astro.props;
@@ -96,6 +97,7 @@ const linkedinLabel = linkedin?.label?.trim() || 'LinkedIn';
 
 <script>
   import { makeAutosaver, saveArea, uniqueId } from '../../lib/editor/client';
+  import { getEmptyStatesStore } from '../../lib/editor/emptyStatesStore';
   import type { ContactLink } from './EditContact.astro';
   import { unregister, wireField } from '../../lib/editor/history';
   import { isPersistableContactValue } from '../../lib/contactValue';
@@ -344,22 +346,18 @@ const linkedinLabel = linkedin?.label?.trim() || 'LinkedIn';
     });
 
     window.addEventListener('editor:save-all', () => {
-      void autosaver.flush();
+      void autosaver.flushIfDirty();
     });
   }
 
   // --- Empty-state message (product-owner-20260717T200000 Decision 3) ---
   const emptyStateEl = document.getElementById('empty-state-text') as HTMLInputElement | null;
-  if (emptyStateEl) {
-    const seedEmptyStates = (
-      window as unknown as { __editorSeed: { emptyStates: { projects: string; experience: string; blog: string; contact: string } } }
-    ).__editorSeed.emptyStates;
-    const workingEmptyStates = { ...seedEmptyStates };
-
-    const emptyStatesAutosaver = makeAutosaver({
-      save: () => saveArea('emptyStates', workingEmptyStates),
-      snapshot: () => JSON.stringify(workingEmptyStates),
-    });
+  // ONE page-wide store/autosaver shared by every emptyStates field
+  // (tech-lead-20261022T122044 D4); null (partial seed) => field unwired.
+  const emptyStatesStore = getEmptyStatesStore();
+  if (emptyStateEl && emptyStatesStore) {
+    const workingEmptyStates = emptyStatesStore.working;
+    const emptyStatesAutosaver = emptyStatesStore.autosaver;
 
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.contact = emptyStateEl.value;
@@ -383,10 +381,6 @@ const linkedinLabel = linkedin?.label?.trim() || 'LinkedIn';
     // this second blur listener (registered after) fires next.
     emptyStateEl.addEventListener('blur', () => {
       void emptyStatesAutosaver.flushIfDirty();
-    });
-
-    window.addEventListener('editor:save-all', () => {
-      void emptyStatesAutosaver.flush();
     });
   }
 </script>

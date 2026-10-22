@@ -4,10 +4,11 @@
 // a Delete control. No <style> block (editor.css is global).
 import EditHeader from './EditHeader.astro';
 import { formatPostDate } from '../../lib/eyebrow';
+import type { EmptyStates } from '../../lib/editor/emptyStatesStore';
 
 export type Props = {
   posts: { id: string; title: string; description: string; date: Date; tags: string[]; draft: boolean }[];
-  emptyStates: { projects: string; experience: string; blog: string; contact: string };
+  emptyStates: EmptyStates;
 };
 
 const { posts, emptyStates } = Astro.props;
@@ -50,7 +51,8 @@ const { posts, emptyStates } = Astro.props;
 </script>
 
 <script>
-  import { deleteBlogPost, makeAutosaver, saveArea } from '../../lib/editor/client';
+  import { deleteBlogPost } from '../../lib/editor/client';
+  import { getEmptyStatesStore } from '../../lib/editor/emptyStatesStore';
 
   document.querySelectorAll<HTMLButtonElement>('[data-remove-post]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -72,16 +74,12 @@ const { posts, emptyStates } = Astro.props;
 
   // --- Empty-state message (product-owner-20260717T200000 Decision 3) ---
   const emptyStateEl = document.getElementById('empty-state-text-blog') as HTMLInputElement | null;
-  if (emptyStateEl) {
-    const seedEmptyStates = (
-      window as unknown as { __editorSeed: { emptyStates: { projects: string; experience: string; blog: string; contact: string } } }
-    ).__editorSeed.emptyStates;
-    const workingEmptyStates = { ...seedEmptyStates };
-
-    const emptyStatesAutosaver = makeAutosaver({
-      save: () => saveArea('emptyStates', workingEmptyStates),
-      snapshot: () => JSON.stringify(workingEmptyStates),
-    });
+  // ONE page-wide store/autosaver shared by every emptyStates field
+  // (tech-lead-20261022T122044 D4); null (partial seed) => field unwired.
+  const emptyStatesStore = getEmptyStatesStore();
+  if (emptyStateEl && emptyStatesStore) {
+    const workingEmptyStates = emptyStatesStore.working;
+    const emptyStatesAutosaver = emptyStatesStore.autosaver;
 
     emptyStateEl.addEventListener('input', () => {
       workingEmptyStates.blog = emptyStateEl.value;
@@ -90,10 +88,6 @@ const { posts, emptyStates } = Astro.props;
 
     emptyStateEl.addEventListener('blur', () => {
       void emptyStatesAutosaver.flushIfDirty();
-    });
-
-    window.addEventListener('editor:save-all', () => {
-      void emptyStatesAutosaver.flush();
     });
   }
 </script>
