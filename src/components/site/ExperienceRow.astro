@@ -1,0 +1,47 @@
+---
+export type ExperienceRowData = {
+  slug: string;
+  dates: string | null;
+  title: string;
+  summary: string;
+  bullets: string[];
+};
+
+export type Props = {
+  row: ExperienceRowData;
+  open?: boolean;
+};
+
+const { row, open = false } = Astro.props;
+const hasBullets = row.bullets.length > 0;
+const detailsId = `exp-d-${row.slug}`;
+---
+
+<div class:list={['exp-row', { 'is-open': hasBullets && open }]}>
+  {hasBullets ? (
+    <button
+      class="exp-row__btn"
+      type="button"
+      aria-expanded={open ? 'true' : 'false'}
+      aria-controls={detailsId}
+    >
+      <span class="exp-row__dates">{row.dates ?? ''}</span>
+      <span class="exp-row__main">
+        <span class="exp-row__role">{row.title}</span>
+        <span class="exp-row__summary">{row.summary}</span>
+      </span>
+      <span class="exp-row__sign" aria-hidden="true">{open ? '–' : '+'}</span>
+    </button>
+    <ul class="exp-row__details" id={detailsId} role="list" hidden={!open}>
+      {row.bullets.map((bullet) => <li>{bullet}</li>)}
+    </ul>
+  ) : (
+    <button class="exp-row__btn" type="button" disabled>
+      <span class="exp-row__dates">{row.dates ?? ''}</span>
+      <span class="exp-row__main">
+        <span class="exp-row__role">{row.title}</span>
+        <span class="exp-row__summary">{row.summary}</span>
+      </span>
+    </button>
+  )}
+</div>

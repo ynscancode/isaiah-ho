@@ -1,0 +1,33 @@
+---
+export type WritingPostData = {
+  href: string;
+  title: string;
+  dateLabel: string;
+};
+
+export type Props = {
+  posts: WritingPostData[];
+  emptyText: string;
+};
+
+const { posts, emptyText } = Astro.props;
+---
+
+<div class="dark inkband" id="writing">
+  <section class="wrap writing" aria-labelledby="writing-h">
+    <div class="writing__intro">
+      <h2 id="writing-h" class="h-section">Writing</h2>
+      {posts.length === 0 && <p class="note">{emptyText}</p>}
+    </div>
+    {posts.length > 0 && (
+      <ul class="posts" role="list">
+        {posts.map((post) => (
+          <li>
+            <a class="title u" href={post.href}>{post.title}</a>
+            <span class="when">{post.dateLabel}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+</div>

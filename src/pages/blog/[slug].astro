@@ -1,7 +1,8 @@
 ---
 import { getCollection } from 'astro:content';
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import Band from '../../components/Band.astro';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import SiteHeader from '../../components/site/SiteHeader.astro';
+import SiteFooter from '../../components/site/SiteFooter.astro';
 import { bodyToHtml } from '../../lib/plainText';
 
 export async function getStaticPaths() {
@@ -15,144 +16,32 @@ export async function getStaticPaths() {
 const { post } = Astro.props;
 
 // Body is stored as plain text, not markdown (product-owner-20260717T170000
-// ISSUE B, AC7) — the editor's Body field makes no markdown promises, so
-// this must not run the body through Astro's remark/markdown pipeline.
-// bodyToHtml (src/lib/plainText.ts) escapes HTML first (so <, >, &, ", ' and
-// any markdown-looking characters always render literally — AC4, closes
-// ARCH-0005 advisory A2's raw-HTML passthrough), THEN wraps blank-line-
-// separated blocks as <p> and converts single newlines within a block to
-// <br> (AC2/AC3). The set:html string below is built ONLY from this
-// escaped-then-wrapped output — the raw body is never passed to set:html
-// directly.
-const bodyHtml = bodyToHtml(post.body);
+// ISSUE B, AC7). bodyToHtml (src/lib/plainText.ts) escapes HTML first, THEN
+// wraps blank-line-separated blocks as <p> and single newlines as <br>. The
+// set:html string below is built ONLY from this escaped-then-wrapped output
+// — the raw body is never passed to set:html directly.
+const bodyHtml = bodyToHtml(post.body ?? '');
 
 const dateFormatter = new Intl.DateTimeFormat('en-SG', {
   month: 'long',
   day: 'numeric',
   year: 'numeric',
+  timeZone: 'UTC',
 });
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description}>
-  <Band variant="paper">
-    <a class="back-link" href="/blog">&larr; Back to blog</a>
-    <span class="mono post-date">{dateFormatter.format(post.data.date)}</span>
-    {post.data.tags.length > 0 && (
-      <ul class="tag-list">
-        {post.data.tags.map((tag) => (
-          <li class="mono tag">{tag}</li>
-        ))}
-      </ul>
-    )}
-    <h1>{post.data.title}</h1>
-    <div class="prose" set:html={bodyHtml} />
-  </Band>
-</BaseLayout>
-
-<style>
-  .back-link {
-    display: inline-block;
-    margin-bottom: 1.5rem;
-    color: var(--signal-text);
-    text-decoration: none;
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 0.9rem;
-  }
-
-  .back-link:hover {
-    text-decoration: underline;
-  }
-
-  .post-date {
-    color: var(--signal-text);
-    display: block;
-    margin-bottom: 0.6rem;
-  }
-
-  .tag-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    list-style: none;
-    margin: 0 0 1.2rem;
-    padding: 0;
-  }
-
-  .tag {
-    color: var(--signal-text);
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    padding: 0.15rem 0.5rem;
-  }
-
-  h1 {
-    font-size: clamp(1.8rem, 3.5vw, 2.6rem);
-    margin: 0 0 2rem;
-    max-width: 22ch;
-  }
-
-  .prose {
-    max-width: 70ch;
-    font-size: 1.05rem;
-  }
-
-  .prose :global(h2) {
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 1.4rem;
-    margin: 2.2rem 0 0.8rem;
-  }
-
-  .prose :global(h3) {
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 1.15rem;
-    margin: 1.8rem 0 0.6rem;
-  }
-
-  .prose :global(p) {
-    margin: 0 0 1.2rem;
-  }
-
-  .prose :global(ul),
-  .prose :global(ol) {
-    margin: 0 0 1.2rem;
-    padding-left: 1.4rem;
-  }
-
-  .prose :global(li) {
-    margin-bottom: 0.4rem;
-  }
-
-  .prose :global(blockquote) {
-    margin: 1.5rem 0;
-    padding: 0.2rem 0 0.2rem 1.2rem;
-    border-left: 3px solid var(--signal);
-    color: var(--slate);
-    font-style: italic;
-  }
-
-  .prose :global(code) {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.9em;
-    background: #ece8de;
-    padding: 0.15em 0.35em;
-    border-radius: 2px;
-  }
-
-  .prose :global(pre) {
-    background: var(--ink);
-    color: var(--paper);
-    padding: 1.2rem;
-    border-radius: 4px;
-    overflow-x: auto;
-    margin: 0 0 1.2rem;
-  }
-
-  .prose :global(pre code) {
-    background: none;
-    padding: 0;
-  }
-
-  .prose :global(a) {
-    color: var(--signal-text);
-  }
-</style>
+<SiteLayout title={post.data.title} description={post.data.description}>
+  <SiteHeader />
+  <main id="main-content" class="wrap">
+    <article class="section section--first">
+      <a class="back u" href="/blog"><span aria-hidden="true">&larr;</span> Back to blog</a>
+      <p class="page__meta">{dateFormatter.format(post.data.date)}</p>
+      {post.data.tags.length > 0 && <p class="page__tags">{post.data.tags.join(', ')}</p>}
+      <h1 class="page__title">{post.data.title}</h1>
+      <div class="prose" set:html={bodyHtml} />
+    </article>
+  </main>
+  <div class="dark floor">
+    <div class="wrap"><SiteFooter /></div>
+  </div>
+</SiteLayout>

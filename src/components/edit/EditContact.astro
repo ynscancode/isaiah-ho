@@ -1,5 +1,12 @@
 ---
-import Band from '../Band.astro';
+// Mirrors src/components/site/Contact.astro — keep class structure in sync.
+// Editable twin on the oxblood ground: the headline is editable, the pills
+// are a non-interactive preview derived from the links below (first usable
+// email / LinkedIn, same rule as src/pages/index.astro), and the link rows
+// are form fields. No <style> block: editor.css is global, so the rows the
+// client script builds with innerHTML are styled too.
+import EditHeader from './EditHeader.astro';
+import { isPersistableContactValue } from '../../lib/contactValue';
 
 export type ContactLink = {
   id: string;
@@ -14,49 +21,72 @@ export type Props = {
 };
 
 const { contact, emptyStates } = Astro.props;
+
+const usable = (type: 'email' | 'linkedin') =>
+  contact.links.find((l) => l.type === type && l.value !== '' && isPersistableContactValue(l.type, l.value));
+const email = usable('email')?.value;
+const linkedin = usable('linkedin');
+const linkedinLabel = linkedin?.label?.trim() || 'LinkedIn';
 ---
 
-<Band variant="ink" as="div">
-  <h1>Contact</h1>
-  <p class="lede" data-editable="lede" contenteditable="true" data-editable-area="contact">{contact.lede}</p>
+<EditHeader active="contact" />
+<main id="main-content">
+  <div class="dark floor" id="contact">
+    <div class="wrap">
+      <section class="contact" aria-labelledby="contact-h">
+        <p class="label">Contact</p>
+        <h1 id="contact-h" class="h-contact" contenteditable="true" data-editable="lede" data-editable-area="contact" data-placeholder="Your contact headline">{contact.lede}</h1>
 
-  <div class="contact-links-list" data-editable-area="contact-links">
-    {contact.links.map((link) => (
-      <div class="contact-link-row" data-link-id={link.id}>
-        <button type="button" class="card-remove-btn contact-link-remove" data-remove-link={link.id} aria-label="Remove this link">Remove</button>
+        {email || linkedin ? (
+          <div class="contact__actions">
+            {email && <span class="pill pill--accent"><span>{email}</span></span>}
+            {linkedin && <span class="pill pill--outline"><span>{linkedinLabel}</span></span>}
+          </div>
+        ) : (
+          <p class="contact__empty">{emptyStates.contact || 'Coming soon.'}</p>
+        )}
+        <p class="editor-note">Only the first email and LinkedIn link appear on the site.</p>
 
-        <label class="editor-field-label mono">Type</label>
-        <select class="editor-input contact-link-type" data-link-field={`${link.id}.type`}>
-          <option value="email" selected={link.type === 'email'}>Email</option>
-          <option value="linkedin" selected={link.type === 'linkedin'}>LinkedIn</option>
-          <option value="github" selected={link.type === 'github'}>GitHub</option>
-          <option value="other" selected={link.type === 'other'}>Other</option>
-        </select>
+        <div class="contact-links-list" data-editable-area="contact-links">
+          {contact.links.map((link) => (
+            <div class="contact-link-row" data-link-id={link.id}>
+              <label class="editor-field-label">Type</label>
+              <select class="editor-input contact-link-type" aria-label="Link type" data-link-field={`${link.id}.type`}>
+                <option value="email" selected={link.type === 'email'}>Email</option>
+                <option value="linkedin" selected={link.type === 'linkedin'}>LinkedIn</option>
+                <option value="github" selected={link.type === 'github'}>GitHub</option>
+                <option value="other" selected={link.type === 'other'}>Other</option>
+              </select>
 
-        <label class="editor-field-label mono">Label</label>
-        <input class="editor-input contact-link-label" type="text"
-          placeholder="e.g. Twitter, Calendly"
-          value={link.label} data-link-field={`${link.id}.label`}
-          disabled={link.type !== 'other'} />
+              <label class="editor-field-label">Label</label>
+              <input class="editor-input contact-link-label" type="text" aria-label="Link label"
+                placeholder="e.g. Twitter, Calendly"
+                value={link.label} data-link-field={`${link.id}.label`}
+                disabled={link.type !== 'other'} />
 
-        <label class="editor-field-label mono">Value</label>
-        <input class="editor-input contact-link-value" type="text"
-          placeholder={link.type === 'email' ? 'name@example.com' : 'https://...'}
-          value={link.value} data-link-field={`${link.id}.value`} />
-        <p class="contact-link-hint" data-link-hint={link.id} hidden>Finish the URL (or email) to save this link — it won't be lost, just held until it's complete.</p>
-      </div>
-    ))}
+              <label class="editor-field-label">Value</label>
+              <input class="editor-input contact-link-value" type="text" aria-label="Link value"
+                placeholder={link.type === 'email' ? 'name@example.com' : 'https://...'}
+                value={link.value} data-link-field={`${link.id}.value`} />
+              <p class="contact-link-hint" data-link-hint={link.id} hidden>Finish the URL (or email) to save this link — it won't be lost, just held until it's complete.</p>
+              <button type="button" class="card-remove-btn contact-link-remove" data-remove-link={link.id} aria-label="Remove this link">Remove</button>
+            </div>
+          ))}
+        </div>
+        <button type="button" class="editor-add-btn" id="add-contact-link">+ Add contact link</button>
+        {contact.links.length === 0 && (
+          <p class="editor-note">No contact links yet — click "+ Add contact link" to add one.</p>
+        )}
+
+        <div class="editor-field">
+          <label class="editor-field-label" for="empty-state-text">Empty-state message</label>
+          <input id="empty-state-text" class="editor-input" type="text" value={emptyStates.contact} data-editable="emptyState" />
+          <p class="editor-note">Shown on the public page in place of the contact buttons when there are no usable links.</p>
+        </div>
+      </section>
+    </div>
   </div>
-  <button type="button" class="editor-add-btn" id="add-contact-link">+ Add contact link</button>
-  {contact.links.length === 0 && (
-    <p class="editor-note">No contact links yet — click "+ Add contact link" to add one.</p>
-  )}
-
-  <hr class="editor-divider" />
-  <label class="editor-field-label mono" for="empty-state-text">Empty-state message</label>
-  <input id="empty-state-text" class="editor-input" type="text" value={emptyStates.contact} data-editable="emptyState" />
-  <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
-</Band>
+</main>
 
 <script define:vars={{ links: contact.links, emptyStates }}>
   window.__editorSeed = window.__editorSeed || {};
@@ -291,19 +321,19 @@ const { contact, emptyStates } = Astro.props;
       row.className = 'contact-link-row';
       row.setAttribute('data-link-id', id);
       row.innerHTML = `
-        <button type="button" class="card-remove-btn contact-link-remove" data-remove-link="${id}" aria-label="Remove this link">Remove</button>
         <label class="editor-field-label mono">Type</label>
-        <select class="editor-input contact-link-type" data-link-field="${id}.type">
+        <select class="editor-input contact-link-type" aria-label="Link type" data-link-field="${id}.type">
           <option value="email">Email</option>
           <option value="linkedin">LinkedIn</option>
           <option value="github">GitHub</option>
           <option value="other" selected>Other</option>
         </select>
         <label class="editor-field-label mono">Label</label>
-        <input class="editor-input contact-link-label" type="text" placeholder="e.g. Twitter, Calendly" value="" data-link-field="${id}.label" />
+        <input class="editor-input contact-link-label" type="text" aria-label="Link label" placeholder="e.g. Twitter, Calendly" value="" data-link-field="${id}.label" />
         <label class="editor-field-label mono">Value</label>
-        <input class="editor-input contact-link-value" type="text" placeholder="https://..." value="" data-link-field="${id}.value" />
+        <input class="editor-input contact-link-value" type="text" aria-label="Link value" placeholder="https://..." value="" data-link-field="${id}.value" />
         <p class="contact-link-hint" data-link-hint="${id}" hidden>Finish the URL (or email) to save this link — it won't be lost, just held until it's complete.</p>
+        <button type="button" class="card-remove-btn contact-link-remove" data-remove-link="${id}" aria-label="Remove this link">Remove</button>
       `;
       list.appendChild(row);
       wireRow(row);
@@ -360,49 +390,3 @@ const { contact, emptyStates } = Astro.props;
     });
   }
 </script>
-
-<style>
-  h1 {
-    font-size: 2rem;
-    margin: 0 0 0.75rem;
-  }
-
-  .lede {
-    color: #c9ccd9;
-    font-size: 1.05rem;
-    margin: 0 0 2.5rem;
-  }
-
-  .editor-note {
-    max-width: 65ch;
-    font-size: 0.85rem;
-    color: #8891ab;
-  }
-
-  .contact-links-list { display: flex; flex-direction: column; gap: 1rem; margin: 0.5rem 0 1rem; }
-  .contact-link-row {
-    position: relative;
-    display: grid;
-    grid-template-columns: 8rem 1fr 1fr;
-    gap: 0.75rem 1rem;
-    align-items: end;
-    border: 1px solid var(--line, #d8d3c7);
-    border-radius: 4px;
-    padding: 1rem 3.5rem 1rem 1rem;
-    background: rgba(245, 243, 238, 0.04);
-  }
-  .contact-link-row .editor-field-label { margin: 0 0 0.3rem; font-size: 0.7rem; }
-  .contact-link-row .editor-input { max-width: none; width: 100%; }
-  .contact-link-row .editor-input:disabled { opacity: 0.45; cursor: not-allowed; }
-  .contact-link-remove { position: absolute; top: 0.75rem; right: 0.75rem; }
-  .contact-link-hint {
-    grid-column: 1 / -1;
-    margin: -0.3rem 0 0;
-    font-size: 0.72rem;
-    color: var(--signal-text, #c87f0a);
-  }
-
-  @media (max-width: 640px) {
-    .contact-link-row { grid-template-columns: 1fr; padding-top: 2.75rem; }
-  }
-</style>

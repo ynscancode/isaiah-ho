@@ -1,0 +1,720 @@
+/* Editor (/edit/**) chrome. Imported ONLY by src/layouts/EditLayout.astro.
+   It reuses the public design by inlining tokens.css + site.css (Vite inlines
+   these @imports, so the editor has no module-graph edge to the public CSS
+   chunk) and then adds editor-only rules, every one prefixed `.editor-root`
+   (set on <body>).
+
+   Global on purpose: Astro scoped CSS never reaches DOM built with
+   document.createElement / innerHTML (Highlights rows, contact rows, history
+   rows, template clones, undo-delete rebuilds), so the Edit* components carry
+   NO <style> blocks and all of their rules live here.
+
+   Rules of the house: no monospace, no uppercase/letter-spaced caps, no
+   @media queries (flex-wrap / auto-fill grids instead), --accent only as a
+   button background or as text on dark grounds. */
+@import './tokens.css';
+@import './site.css';
+
+.editor-root {
+  /* Editor-only status colours; contrast computed against the real grounds. */
+  --editor-danger: #8E2A20;       /* 7.38:1 on paper, 8.39:1 on card */
+  --editor-danger-dark: #F4A79D;  /* 9.19:1 on ink, 7.09:1 on floor */
+  --editor-ok: #2F5E3A;           /* 6.63:1 on paper */
+  --editor-ok-dark: #A8D5B0;      /* 10.83:1 on ink */
+}
+
+html:has(.editor-root) {
+  scroll-behavior: auto; /* the public smooth-scroll fights focus-driven scrolling in the editor */
+  scroll-padding-bottom: 8rem; /* sticky toolbar height + breathing room */
+}
+
+.editor-root code { font-family: inherit; }
+.editor-root ::placeholder { color: var(--muted); opacity: 1; }
+.editor-root .pill:hover span { text-decoration: none; }
+.editor-root [hidden] { display: none !important; }
+.editor-root template { display: none; }
+
+.editor-root .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Header / footer ---------- */
+.editor-root .nav a[aria-current="page"] {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  text-decoration-thickness: 1px;
+}
+.editor-root .hero__actions > a.u {
+  font-size: 15px;
+  font-style: italic;
+  color: var(--paper-muted);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.editor-root .editor-hint { font-style: italic; }
+
+/* ---------- Editable text (contenteditable) ---------- */
+.editor-root [contenteditable="true"] {
+  outline: 1px dashed var(--muted);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.editor-root .dark [contenteditable="true"] {
+  outline-color: var(--outline-dark);
+}
+.editor-root [contenteditable="true"]:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+.editor-root .dark [contenteditable="true"]:focus {
+  outline-color: var(--accent);
+}
+/* KB-0030: an EMPTY inline contenteditable collapses to a zero-width box in
+   Chromium with no caret to anchor, so desktop keystrokes drop silently.
+   Generalises the old .card-eyebrow rule: the category is a <span> inside
+   .editor-meta / .card__meta. */
+.editor-root span[contenteditable="true"] {
+  display: inline-block;
+  min-width: 1ch;
+  min-height: 1em;
+}
+/* Placeholder hint only (never part of the saved value). No opacity
+   reduction: --muted on paper, --paper-muted on dark. */
+.editor-root [contenteditable="true"]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  font-style: italic;
+  pointer-events: none;
+}
+.editor-root .dark [contenteditable="true"]:empty::before {
+  color: var(--paper-muted);
+}
+/* UX affordance only (not the trust boundary, KB-0017): set on <html> when
+   contentSource === 'build'. */
+html[data-editor-readonly="true"] [contenteditable="true"] {
+  pointer-events: none;
+  opacity: .7;
+}
+
+/* ---------- Notes, labels, form fields ---------- */
+.editor-root .editor-note {
+  max-width: 65ch;
+  margin: 12px 0 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .dark .editor-note { color: var(--paper-muted); }
+.editor-root .pinned-note { margin: 0; }
+
+.editor-root .editor-field-label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .dark .editor-field-label { color: var(--paper-muted); }
+
+.editor-root .editor-field {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.editor-root .dark .editor-field {
+  margin-top: 48px;
+  border-top-color: var(--line-dark);
+}
+.editor-root .editor-field .editor-field-label { font-size: 16px; }
+
+.editor-root .editor-input {
+  display: block;
+  width: 100%;
+  max-width: 40em;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+.editor-root .dark .editor-input { border-color: var(--outline-dark); }
+.editor-root .editor-input:disabled { opacity: .6; cursor: not-allowed; }
+.editor-root input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--floor); vertical-align: -4px; margin-right: 8px; }
+
+.editor-root .editor-textarea {
+  display: block;
+  width: 100%;
+  max-width: 40em;
+  min-height: 12em;
+  padding: 12px 14px;
+  border: 1px dashed var(--muted);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  field-sizing: content;
+}
+.editor-root .editor-textarea--body { max-width: 36em; }
+
+/* ---------- Buttons (pills, 44px minimum) ---------- */
+.editor-root .editor-btn,
+.editor-root .editor-add-btn,
+.editor-root .card-remove-btn,
+.editor-root .group-move-btn,
+.editor-root .highlights-move-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+.editor-root .editor-btn:hover,
+.editor-root .editor-add-btn:hover,
+.editor-root .card-remove-btn:hover,
+.editor-root .group-move-btn:hover:not(:disabled),
+.editor-root .highlights-move-btn:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.editor-root .dark .editor-btn,
+.editor-root .dark .editor-add-btn {
+  border-color: var(--outline-dark);
+  color: var(--paper);
+}
+.editor-root button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.editor-root button:disabled:hover { text-decoration: none; }
+
+.editor-root .editor-btn.editor-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+  font-weight: 500;
+}
+.editor-root .editor-btn.editor-btn-publish {
+  border-color: var(--paper);
+  font-weight: 500;
+}
+.editor-root .editor-btn.editor-btn-ghost { border-color: transparent; }
+
+.editor-root .editor-add-btn {
+  margin-top: 28px;
+  border-style: dashed;
+  border-color: var(--muted);
+}
+.editor-root .dark .editor-add-btn { border-color: var(--outline-dark); }
+
+.editor-root .card-remove-btn {
+  padding: 0 18px;
+  border-color: var(--editor-danger);
+  color: var(--editor-danger);
+}
+.editor-root .dark .card-remove-btn {
+  border-color: var(--editor-danger-dark);
+  color: var(--editor-danger-dark);
+}
+.editor-root .group-move-btn,
+.editor-root .highlights-move-btn {
+  padding: 0 16px;
+  border-color: var(--muted);
+  font-size: 15px;
+}
+
+/* ---------- Toolbar (sticky, in normal flow: never covers content) ---------- */
+.editor-root .editor-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 500;
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 12px var(--gutter);
+  background: var(--ink);
+  color: var(--paper);
+  border-top: 1px solid var(--line-dark);
+  font-size: 15px;
+}
+.editor-root .editor-toolbar-status {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.editor-root .editor-toolbar-status strong { font-weight: 500; }
+.editor-root #editor-status-text[data-status="dirty"],
+.editor-root #editor-status-text[data-status="retrying"] { color: var(--accent); }
+.editor-root #editor-status-text[data-status="saving"] { color: var(--paper-muted-ink); }
+.editor-root #editor-status-text[data-status="saved"] { color: var(--editor-ok-dark); }
+.editor-root #editor-status-text[data-status="error"] { color: var(--editor-danger-dark); }
+/* One scrolling row of controls. The 24em basis makes it wrap onto its own
+   line below the status when the viewport is narrow (no @media) and share the
+   row with it when wide. Padding keeps focus rings inside the scroll box. */
+.editor-root .editor-toolbar-actions {
+  display: flex;
+  flex: 1 1 24em;
+  flex-wrap: nowrap;
+  min-width: 0;
+  gap: 12px;
+  padding: 4px 6px;
+  overflow-x: auto;
+}
+.editor-root .editor-toolbar-actions > * { flex: 0 0 auto; }
+.editor-root .editor-toolbar-message {
+  flex-basis: 100%;
+  font-size: 14px;
+  color: var(--paper-muted-ink);
+}
+.editor-root .editor-toolbar-message a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.editor-root .editor-toolbar-banner {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(237, 178, 124, .14);
+  color: var(--paper);
+  font-size: 15px;
+}
+.editor-root .editor-toolbar-banner a { color: inherit; text-decoration: underline; }
+.editor-root #editor-readonly-banner { border-color: var(--editor-danger-dark); }
+/* Paper variant (history error banner lives in <main>). */
+.editor-root main .editor-toolbar-banner {
+  margin: 16px 0 0;
+  border-color: var(--editor-danger);
+  background: var(--card);
+  color: var(--ink);
+}
+
+/* ---------- Collections (experience rows, project cards) ---------- */
+.editor-root .editor-groups { display: flex; flex-direction: column; }
+.editor-root .category-group + .category-group { margin-top: 40px; }
+.editor-root .exp-groups > .exp-group + .exp-group { margin-top: 0; }
+.editor-root .pending-group:not(:has(.card-slot)) { display: none; }
+
+.editor-root .group-subhead-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+.editor-root .group-move-controls { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.editor-root .exp-group .group-subhead {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .group-subhead.chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  cursor: auto;
+}
+.editor-root .group-subhead.chip:hover { text-decoration: none; }
+.editor-root .editor-groups .group-subhead-row { margin-bottom: 16px; }
+
+.editor-root .editor-empty-preview { margin-top: 28px; }
+.editor-root section:has(.card-slot) .editor-empty-preview { display: none; }
+
+.editor-root .editor-dates { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.editor-root .editor-date { display: block; }
+.editor-root .editor-date .editor-input {
+  width: auto;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 4px 10px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.editor-root .exp-row__dates.editor-dates {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.editor-root .editor-meta {
+  font-size: 15px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* Editable experience row: always expanded, shown as the "open" ledger row. */
+.editor-root .exp-row {
+  margin-top: 12px;
+  padding-bottom: 8px;
+  background: var(--card);
+  border-top-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.editor-root .exp-row__btn { cursor: auto; }
+.editor-root .exp-row__btn:hover .exp-row__role { text-decoration: none; }
+.editor-root .editor-row-actions { flex: 0 0 auto; }
+/* site.css's .exp-row__details is display:flex; inside a flex container text
+   and <br> become flex items, which breaks line breaks and the caret. */
+.editor-root .editor-details {
+  display: block;
+  padding: 0;
+  /* Indent under the main column on wide screens (mirrors the public 202px
+     indent, which site.css drops at 720px). clamp() trick instead of an
+     @media query: negative below 720px viewport -> 0, huge above -> 202px. */
+  margin: 0 0 16px clamp(0px, calc((100vw - 720px) * 1000), 202px);
+  max-width: 60ch;
+  font-size: 16px;
+  line-height: 1.55;
+  color: #2B2527;
+}
+.editor-root .editor-href {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .exp-row > .editor-href {
+  margin-left: clamp(0px, calc((100vw - 720px) * 1000), 202px);
+}
+
+.editor-root .card-slot .card__meta { display: block; }
+.editor-root .card h3[contenteditable="true"] { min-width: 1ch; }
+.editor-root .editor-card-extra {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.editor-root .editor-card-extra > * { max-width: 100%; }
+.editor-root .editor-card-extra .editor-field-label,
+.editor-root .editor-card-extra .editor-note { margin: 0; }
+.editor-root .editor-detail {
+  align-self: stretch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* ---------- Home: collapsed panel + Highlights ---------- */
+.editor-root .editor-panel {
+  margin-top: 56px;
+  padding: 0 24px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.editor-root .editor-panel > summary {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  cursor: pointer;
+  list-style: none;
+}
+.editor-root .editor-panel > summary::-webkit-details-marker { display: none; }
+.editor-root .editor-panel > summary::after {
+  content: "+";
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  font-size: 18px;
+  line-height: 1;
+}
+.editor-root .editor-panel[open] > summary::after { content: "\2013"; }
+.editor-root .editor-panel > summary:hover { text-decoration: underline; text-underline-offset: 5px; text-decoration-thickness: 1px; }
+
+.editor-root .highlights-section { margin-top: 24px; }
+.editor-root .highlights-subhead {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .highlights-section-selected .highlights-subhead { color: var(--ink); }
+.editor-root .highlights-group + .highlights-group { margin-top: 20px; }
+.editor-root .highlights-group .group-subhead {
+  margin: 12px 0 8px;
+  font-size: 15px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root [data-highlights-selected-groups] > .highlights-group:first-child .group-subhead { margin-top: 0; }
+.editor-root .highlights-list,
+.editor-root .highlights-pool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.editor-root .highlights-pool { max-height: 18rem; overflow-y: auto; }
+.editor-root .highlights-row,
+.editor-root .highlights-pool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.editor-root .highlights-row { background: var(--card); }
+.editor-root .highlights-pool-row { background: var(--paper); }
+.editor-root .highlights-position {
+  min-width: 1.8em;
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.editor-root .highlights-type { font-size: 14px; font-style: italic; color: var(--floor); }
+.editor-root .highlights-item-title { flex: 1 1 12rem; min-width: 0; font-size: 17px; overflow-wrap: anywhere; }
+.editor-root .highlights-missing { flex: 1 1 12rem; font-size: 15px; font-style: italic; color: var(--muted); }
+.editor-root .highlights-row-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.editor-root .highlights-row-move-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-right: 12px;
+  margin-right: 4px;
+  border-right: 1px solid var(--line);
+}
+.editor-root .highlights-pool-info { display: flex; flex-direction: column; gap: 2px; flex: 1 1 12rem; min-width: 0; }
+.editor-root .highlights-pool-title { font-size: 17px; overflow-wrap: anywhere; }
+.editor-root .highlights-pool-meta { font-size: 14px; font-style: italic; color: var(--muted); }
+.editor-root .highlights-add-btn { margin-top: 0; }
+.editor-root .highlights-cap-note { margin: 0 0 8px; font-size: 14px; font-style: italic; color: var(--editor-danger); }
+
+/* ---------- About ---------- */
+.editor-root .editor-photo-frame { display: block; }
+.editor-root .about-image-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 5;
+  border: 1.5px dashed var(--muted);
+  background: #E6E1D8;
+  font-size: 15px;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .about-image-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+}
+.editor-root .about-image-controls .editor-note { margin: 0; }
+.editor-root #about-image-status[data-tone="error"] { color: var(--editor-danger); }
+.editor-root #about-image-status[data-tone="ok"] { color: var(--editor-ok); }
+
+/* ---------- Contact (floor ground) ---------- */
+.editor-root .contact-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 40px 0 0;
+}
+.editor-root .contact-link-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 16px;
+  max-width: 40em;
+  padding: 16px;
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  background: rgba(243, 240, 234, .06);
+}
+.editor-root .contact-link-row .editor-field-label { margin: 0; color: var(--paper-muted); }
+.editor-root .contact-link-row .editor-input { max-width: none; }
+.editor-root .contact-link-row .contact-link-remove { grid-column: 1 / -1; justify-self: start; order: 2; }
+.editor-root .contact-link-hint {
+  grid-column: 1 / -1;
+  order: 1;
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--accent);
+}
+
+/* ---------- Blog ---------- */
+.editor-root .editor-draft { font-style: italic; color: var(--floor); }
+.editor-root .posts--paper .card-slot-wrap .card-remove-btn { margin-top: 4px; }
+.editor-root .editor-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  margin: 0 0 12px;
+}
+.editor-root .editor-post-meta .editor-field-label { margin: 0; font-size: 16px; }
+.editor-root .editor-post-meta label.editor-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.editor-root .editor-post-meta .editor-input { width: auto; }
+.editor-root .editor-input--tags {
+  margin: 0 0 20px;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+}
+.editor-root .editor-input--title {
+  max-width: none;
+  margin: 0 0 24px;
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px dashed var(--muted);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: clamp(36px, 4.4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -.01em;
+}
+.editor-root .editor-post-field { margin: 0 0 24px; }
+.editor-root .editor-post-field .editor-field-label { margin-bottom: 6px; }
+
+/* ---------- History ---------- */
+.editor-root #history-status { min-height: 1.4em; margin: 16px 0 0; font-size: 15px; font-style: italic; }
+.editor-root #history-status[data-tone="error"] { color: var(--editor-danger); }
+.editor-root .history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.editor-root .history-row,
+.editor-root .history-session {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+.editor-root .history-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 16px;
+}
+.editor-root .history-row--current,
+.editor-root .history-session--current { border-left: 2px solid var(--floor); }
+.editor-root .history-session { overflow: hidden; }
+.editor-root .history-row-message,
+.editor-root .history-session-summary-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 16px;
+}
+.editor-root .history-row-time,
+.editor-root .history-session-count {
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.editor-root .history-area-badge {
+  flex: 0 0 auto;
+  padding: 2px 12px;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.editor-root .history-row-current-label { flex: 0 0 auto; font-size: 14px; font-style: italic; color: var(--floor); }
+.editor-root .history-session-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 16px;
+}
+.editor-root .history-session-toggle {
+  display: flex;
+  flex: 1 1 220px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.editor-root .history-session-toggle:hover .history-session-summary-text {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.editor-root .history-session-chevron { flex: 0 0 auto; margin-left: auto; }
+.editor-root .history-session-toggle[aria-expanded="true"] .history-session-chevron { transform: rotate(-180deg); }
+.editor-root .history-session-members {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+.editor-root .history-session-members .history-row { background: var(--paper); }

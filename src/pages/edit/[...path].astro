@@ -19,7 +19,8 @@
 export const prerender = false;
 
 import { loadSiteJson, loadCollectionJson, loadBlogList, loadBlogPost, type ContentSource } from '../../lib/draftContent';
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import EditLayout from '../../layouts/EditLayout.astro';
+import { isPersistableContactValue } from '../../lib/contactValue';
 import EditorHarness from '../../components/EditorHarness.astro';
 import EditHome from '../../components/edit/EditHome.astro';
 import EditAbout from '../../components/edit/EditAbout.astro';
@@ -108,6 +109,12 @@ if (segments.length === 0) {
   const blogPool = blogResult.data
     .filter((p) => !p.draft)
     .map((p) => ({ id: p.slug, title: p.title, date: p.date }));
+  // Preview-only pills for the hero (same derivation as src/pages/index.astro:
+  // first usable email / LinkedIn contact link). No new load — siteData is in hand.
+  const contactLinks: any[] = siteData.contact?.links ?? [];
+  const usable = (type: 'email' | 'linkedin') =>
+    contactLinks.find((l) => l.type === type && l.value !== '' && isPersistableContactValue(l.type, l.value));
+  const linkedin = usable('linkedin');
   body = {
     view: 'home',
     hero,
@@ -115,6 +122,11 @@ if (segments.length === 0) {
     projectsPool,
     blogPool,
     emptyStates: emptyStatesFrom(siteData),
+    actions: {
+      email: usable('email')?.value,
+      linkedinUrl: linkedin?.value,
+      linkedinLabel: linkedin?.label?.trim() || 'LinkedIn',
+    },
   };
 } else if (area === 'about' && !sub) {
   const siteJson = await loadSiteJson();
@@ -234,7 +246,7 @@ if (segments.length === 0) {
 }
 ---
 
-<BaseLayout title={pageTitle} description="Isaiah Ho — content editor (private).">
+<EditLayout title={pageTitle}>
   {body?.view === 'home' && (
     <EditHome
       hero={body.hero}
@@ -242,6 +254,7 @@ if (segments.length === 0) {
       projectsPool={body.projectsPool}
       blogPool={body.blogPool}
       emptyStates={body.emptyStates}
+      actions={body.actions}
     />
   )}
   {body?.view === 'about' && <EditAbout about={body.about} />}
@@ -257,4 +270,4 @@ if (segments.length === 0) {
   {body?.view === 'history' && <EditHistory />}
 
   <EditorHarness slot="editor-toolbar" contentSource={contentSource} />
-</BaseLayout>
+</EditLayout>

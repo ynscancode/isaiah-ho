@@ -1,21 +1,26 @@
 ---
-import Band from '../Band.astro';
+// Version history list. Rows are built by the client script below, styled by
+// the global src/styles/editor.css (no <style> block here).
+import EditHeader from './EditHeader.astro';
 ---
 
-<Band variant="ink" as="div">
-  <h1>Version history</h1>
-  <p id="history-status" role="status" aria-live="polite"></p>
+<EditHeader active="history" />
+<main id="main-content" class="wrap">
+  <section class="section section--first" aria-labelledby="history-h">
+    <h1 id="history-h" class="h-section">Version history</h1>
+    <p id="history-status" role="status" aria-live="polite"></p>
 
-  <p class="editor-note" id="history-loading">Loading history…</p>
-  <p class="editor-note" id="history-empty" hidden>
-    No saved versions yet — history will appear here once you save a change.
-  </p>
-  <div id="history-error-banner" class="editor-toolbar-banner" role="alert" hidden>
-    Couldn't load version history. <a href="#" id="history-retry">Retry</a>
-  </div>
+    <p class="editor-note" id="history-loading">Loading history…</p>
+    <p class="editor-note" id="history-empty" hidden>
+      No saved versions yet — history will appear here once you save a change.
+    </p>
+    <div id="history-error-banner" class="editor-toolbar-banner" role="alert" hidden>
+      Couldn't load version history. <a href="#" id="history-retry">Retry</a>
+    </div>
 
-  <ul class="history-list" id="history-list" aria-label="Version history" hidden></ul>
-</Band>
+    <ul class="history-list" id="history-list" aria-label="Version history" hidden></ul>
+  </section>
+</main>
 
 <script>
   import { fetchHistory, revertDraft } from '../../lib/editor/client';
@@ -467,158 +472,3 @@ import Band from '../Band.astro';
 
   void loadHistory();
 </script>
-
-<style>
-  h1 {
-    font-size: 2rem;
-    margin: 0 0 2rem;
-  }
-
-  #history-status {
-    min-height: 1.2rem;
-    font-size: 0.85rem;
-    margin: 0 0 1rem;
-  }
-  #history-status[data-tone="error"] {
-    color: #ff9c9c;
-  }
-
-  .editor-note {
-    max-width: 65ch;
-    font-size: 0.85rem;
-    color: #8891ab;
-  }
-
-  .history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 1rem;
-    list-style: none;
-    padding: 0;
-  }
-</style>
-
-<style is:global>
-  .history-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    padding: 0.85rem 1rem;
-    border: 1px solid #3a4468;
-    border-radius: 4px;
-    background: rgba(245, 243, 238, 0.04);
-  }
-  .history-row--current {
-    border-color: var(--signal, #c87f0a);
-  }
-  .history-row-message {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.85rem;
-  }
-  .history-row-time {
-    flex: 0 0 auto;
-    font-size: 0.78rem;
-    opacity: 0.75;
-    white-space: nowrap;
-  }
-  .history-area-badge {
-    flex: 0 0 auto;
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.15rem 0.5rem;
-    border: 1px solid currentColor;
-    border-radius: 2px;
-    opacity: 0.85;
-  }
-  .history-row-current-label {
-    flex: 0 0 auto;
-    font-size: 0.75rem;
-    color: var(--signal, #c87f0a);
-    opacity: 0.9;
-  }
-
-  .history-session {
-    border: 1px solid #3a4468;
-    border-radius: 4px;
-    background: rgba(245, 243, 238, 0.04);
-    overflow: hidden;
-  }
-  .history-session--current {
-    border-color: var(--signal, #c87f0a);
-  }
-  .history-session-summary {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    padding: 0.85rem 1rem;
-  }
-  .history-session-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    flex: 1 1 auto;
-    min-width: 220px;
-    background: none;
-    border: none;
-    padding: 0;
-    margin: 0;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .history-session-toggle:focus-visible {
-    outline: 2px solid var(--signal, #c87f0a);
-    outline-offset: 2px;
-  }
-  .history-session-summary-text {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.85rem;
-  }
-  .history-session-count {
-    flex: 0 0 auto;
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.78rem;
-    opacity: 0.75;
-    white-space: nowrap;
-  }
-  .history-session-chevron {
-    flex: 0 0 auto;
-    margin-left: auto;
-    transition: transform 0.15s ease;
-  }
-  .history-session-toggle[aria-expanded="true"] .history-session-chevron {
-    transform: rotate(-180deg);
-  }
-  .history-session-members {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    list-style: none;
-    margin: 0;
-    padding: 0.75rem 1rem 1rem;
-    border-top: 1px solid #3a4468;
-  }
-  .history-session-members[hidden] {
-    display: none;
-  }
-  .history-session-members .history-row {
-    background: rgba(245, 243, 238, 0.02);
-  }
-</style>

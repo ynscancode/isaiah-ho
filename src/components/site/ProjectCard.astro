@@ -1,0 +1,23 @@
+---
+export type ProjectCardData = {
+  category: string;
+  dates: string | null;
+  title: string;
+  body: string;
+  href: string;
+  external: boolean;
+};
+
+export type Props = {
+  card: ProjectCardData;
+  kind: string;
+};
+
+const { card, kind } = Astro.props;
+---
+
+<article class="card" data-kind={kind}>
+  <p class="card__meta">{card.category}{card.dates && <>, <span>{card.dates}</span></>}</p>
+  <h3><a href={card.href} rel={card.external ? 'noopener' : undefined}>{card.title}</a></h3>
+  <p class="card__desc">{card.body}</p>
+</article>

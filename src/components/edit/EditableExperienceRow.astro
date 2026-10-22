@@ -1,0 +1,38 @@
+---
+// Mirrors src/components/site/ExperienceRow.astro — keep class structure in sync.
+// Editable twin: always expanded (no accordion), contenteditable fields, date
+// inputs, remove + edit-link controls. All data-* hooks are the contract of
+// EditCollection.astro's client script. No <style> block: editor.css is global
+// so JS-cloned rows (template, undo-delete rebuild) are styled too. Keep
+// values on the same line as their tags: whitespace inside a contenteditable
+// would be saved into the value.
+export type Props = {
+  id: string;
+  category: string;
+  startDate: string | null;
+  endDate: string | null;
+  title: string;
+  body: string;
+  detail?: string;
+  href?: string;
+};
+
+const { id, category, startDate, endDate, title, body, detail = '', href } = Astro.props;
+---
+
+<div class="exp-row card-slot" data-entry-id={id}>
+  <div class="exp-row__btn">
+    <span class="exp-row__dates editor-dates">
+      <label class="editor-date"><span class="editor-field-label">Start</span><input type="date" class="editor-input" value={startDate ?? ''} data-editable={`${id}.startDate`} /></label>
+      <label class="editor-date"><span class="editor-field-label">End</span><input type="date" class="editor-input" value={endDate ?? ''} data-editable={`${id}.endDate`} /></label>
+    </span>
+    <span class="exp-row__main">
+      <span class="editor-meta">Category: <span contenteditable="true" role="textbox" data-editable={`${id}.category`} data-placeholder="e.g. Work, Leadership" aria-label="Category">{category}</span></span>
+      <span class="exp-row__role" contenteditable="true" role="textbox" data-editable={`${id}.title`} data-placeholder="Role, organisation" aria-label="Role">{title}</span>
+      <span class="exp-row__summary" contenteditable="true" role="textbox" data-editable={`${id}.body`} data-placeholder="One-line summary." aria-label="Summary" aria-multiline="true">{body}</span>
+    </span>
+    <span class="editor-row-actions"><button type="button" class="card-remove-btn" data-remove-entry={id} aria-label={`Remove ${title || 'entry'}`}>Remove</button></span>
+  </div>
+  <div class="exp-row__details editor-details" contenteditable="true" role="textbox" data-editable={`${id}.detail`} data-placeholder="Bullet points, one per line — shown when the row is opened." aria-label="Detail bullets" aria-multiline="true">{detail}</div>
+  <p class="editor-href">Link on the detail page: <span data-editable-href-value={`${id}.href`}>{href || '(none)'}</span> <button type="button" class="editor-btn" data-editable-href={`${id}.href`} data-nullable="true">Edit link</button></p>
+</div>

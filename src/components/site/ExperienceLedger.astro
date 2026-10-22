@@ -1,0 +1,69 @@
+---
+import ExperienceRow from './ExperienceRow.astro';
+import type { ExperienceRowData } from './ExperienceRow.astro';
+
+export type ExperienceGroupData = {
+  category: string;
+  rows: ExperienceRowData[];
+};
+
+export type Props = {
+  groups: ExperienceGroupData[];
+  emptyText: string;
+};
+
+const { groups, emptyText } = Astro.props;
+
+// The first row (in rendered order) that has bullets starts open.
+const firstOpenSlug = groups.flatMap((g) => g.rows).find((r) => r.bullets.length > 0)?.slug;
+const hasRows = groups.some((g) => g.rows.length > 0);
+---
+
+<section id="experience" class="section" aria-labelledby="exp-h">
+  <h2 id="exp-h" class="h-section">Experience</h2>
+  {hasRows ? (
+    <div class="exp-groups" data-ledger>
+      {groups.map((group) => (
+        <div class="exp-group">
+          <h3>{group.category}</h3>
+          {group.rows.map((row) => <ExperienceRow row={row} open={row.slug === firstOpenSlug} />)}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p class="empty-note">{emptyText}</p>
+  )}
+</section>
+
+<script>
+  // Accordion: one row open at a time, scoped to each ledger root.
+  document.querySelectorAll<HTMLElement>('[data-ledger]').forEach((root) => {
+    const rows = root.querySelectorAll<HTMLElement>('.exp-row');
+    rows.forEach((row) => {
+      const btn = row.querySelector<HTMLButtonElement>('.exp-row__btn');
+      if (!btn || btn.disabled) return;
+      btn.addEventListener('click', () => {
+        const willOpen = btn.getAttribute('aria-expanded') !== 'true';
+        rows.forEach((r) => {
+          const b = r.querySelector<HTMLButtonElement>('.exp-row__btn');
+          const d = r.querySelector<HTMLElement>('.exp-row__details');
+          const s = r.querySelector<HTMLElement>('.exp-row__sign');
+          if (!b || !d || !s) return;
+          b.setAttribute('aria-expanded', 'false');
+          d.hidden = true;
+          s.textContent = '+';
+          r.classList.remove('is-open');
+        });
+        if (willOpen) {
+          const d = row.querySelector<HTMLElement>('.exp-row__details');
+          const s = row.querySelector<HTMLElement>('.exp-row__sign');
+          if (!d || !s) return;
+          btn.setAttribute('aria-expanded', 'true');
+          d.hidden = false;
+          s.textContent = '–';
+          row.classList.add('is-open');
+        }
+      });
+    });
+  });
+</script>

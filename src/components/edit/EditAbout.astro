@@ -1,5 +1,9 @@
 ---
-import Band from '../Band.astro';
+// Mirrors src/components/site/About.astro — keep class structure in sync.
+// Editable twin: the body is a textarea (paragraphs round-trip as plain text)
+// and the photo column carries the upload/remove controls. No <style> block:
+// editor.css is global, so JS-built nodes (the "No photo" box) are styled too.
+import EditHeader from './EditHeader.astro';
 
 export type Props = {
   about: { body: string; image: string | null };
@@ -8,35 +12,37 @@ export type Props = {
 const { about } = Astro.props;
 ---
 
-<Band variant="ink" as="div">
-  <h1>About</h1>
-
-  <label class="editor-field-label mono" for="about-image-input">Profile photo</label>
-  <div class="about-image-field">
-    <div class="about-image-preview" id="about-image-preview">
-      {about.image ? (
-        <img src={`/api/draft/asset?path=${encodeURIComponent(about.image)}`} alt="Current profile photo" />
-      ) : (
-        <div class="about-image-empty" aria-hidden="true"><span class="mono">No photo</span></div>
-      )}
+<EditHeader active="about" />
+<main id="main-content" class="wrap">
+  <section class="section section--first" aria-labelledby="about-h">
+    <div class="about">
+      <div class="about__copy">
+        <h1 id="about-h" class="h-section">About</h1>
+        <label class="visually-hidden" for="about-body">About text</label>
+        <div class="body" data-editable-area="about">
+          <textarea id="about-body" class="editor-textarea editor-textarea--body" data-editable="body">{about.body}</textarea>
+        </div>
+        <p class="editor-note">A blank line starts a new paragraph.</p>
+      </div>
+      <div class="photo editor-photo">
+        <div id="about-image-preview" class="editor-photo-frame">
+          {about.image ? (
+            <img src={`/api/draft/asset?path=${encodeURIComponent(about.image)}`} alt="Current profile photo" />
+          ) : (
+            <div class="about-image-empty"><span class="mono">No photo</span></div>
+          )}
+        </div>
+        <div class="about-image-controls">
+          <input type="file" id="about-image-input" accept="image/jpeg,image/png,image/webp" hidden />
+          <button type="button" class="editor-btn" id="about-image-upload-btn">Upload photo</button>
+          <button type="button" class="editor-btn editor-btn-ghost" id="about-image-remove-btn" hidden={!about.image}>Remove photo</button>
+          <p class="editor-note" id="about-image-status" role="status" aria-live="polite"></p>
+          <button type="button" class="editor-btn" id="about-reload-btn" hidden>Reload page</button>
+        </div>
+      </div>
     </div>
-    <div class="about-image-controls">
-      <input type="file" id="about-image-input" accept="image/jpeg,image/png,image/webp" hidden />
-      <button type="button" class="editor-btn" id="about-image-upload-btn">Upload photo</button>
-      <button type="button" class="editor-btn editor-btn-ghost" id="about-image-remove-btn" hidden={!about.image}>Remove photo</button>
-      <p class="editor-note" id="about-image-status" role="status" aria-live="polite"></p>
-      <button type="button" class="editor-btn" id="about-reload-btn" hidden>Reload page</button>
-    </div>
-  </div>
-
-  <label class="editor-field-label mono" for="about-body">Body</label>
-  <div class="prose" data-editable-area="about">
-    <textarea id="about-body" class="editor-textarea" data-editable="body">{about.body}</textarea>
-  </div>
-  <p class="editor-note">
-    Paragraphs and line breaks are kept as you type — no formatting syntax needed.
-  </p>
-</Band>
+  </section>
+</main>
 
 <script define:vars={{ aboutImage: about.image }}>
   window.__editorSeed = window.__editorSeed || {};
@@ -253,61 +259,3 @@ const { about } = Astro.props;
     });
   }
 </script>
-
-<style>
-  h1 {
-    font-size: 2rem;
-    margin: 0 0 2rem;
-  }
-
-  .prose {
-    max-width: 65ch;
-  }
-
-  .editor-note {
-    max-width: 65ch;
-    font-size: 0.85rem;
-    color: #8891ab;
-  }
-
-  .about-image-field {
-    display: flex;
-    gap: 1.25rem;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    margin: 0.5rem 0 1.75rem;
-  }
-  .about-image-preview {
-    width: 160px;
-    max-height: 200px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: flex-start;
-  }
-  .about-image-preview img {
-    width: auto;
-    height: auto;
-    max-width: 160px;
-    max-height: 200px;
-    object-fit: contain;
-    border-radius: 4px;
-    border: 1px solid var(--line, #d8d3c7);
-    display: block;
-  }
-  .about-image-empty {
-    width: 160px; height: 200px;
-    border: 1px dashed var(--slate, #5b6472);
-    border-radius: 4px;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(245, 243, 238, 0.04);
-  }
-  .about-image-empty span { font-size: 0.7rem; opacity: 0.7; }
-  .about-image-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    min-width: 200px;
-  }
-  #about-image-status[data-tone="error"] { color: #ff9c9c; }
-  #about-image-status[data-tone="ok"] { color: #7fd6a0; }
-</style>

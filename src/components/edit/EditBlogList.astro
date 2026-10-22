@@ -1,6 +1,9 @@
 ---
-import Band from '../Band.astro';
-import Card from '../Card.astro';
+// Mirrors src/pages/blog/index.astro — keep class structure in sync.
+// Editable twin of the blog index: each post links to its editor page and has
+// a Delete control. No <style> block (editor.css is global).
+import EditHeader from './EditHeader.astro';
+import { formatPostDate } from '../../lib/eyebrow';
 
 export type Props = {
   posts: { id: string; title: string; description: string; date: Date; tags: string[]; draft: boolean }[];
@@ -8,35 +11,38 @@ export type Props = {
 };
 
 const { posts, emptyStates } = Astro.props;
-const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
 ---
 
-<Band variant="paper" as="div">
-  <h1>Blog</h1>
-  <a class="editor-add-btn" href="/edit/blog/new">+ Add blog post</a>
-  <div class="cards">
-    {posts.length === 0 && <p class="empty-state">No posts yet — use "Add blog post" above.</p>}
-    {posts.map((post) => (
-      <div class="card-slot-wrap" data-post-id={post.id}>
-        <Card
-          eyebrow={`${dateFormatter.format(post.date).toUpperCase()}${post.draft ? ' · DRAFT' : ''}`}
-          title={post.title}
-          body={post.description}
-          href={`/edit/blog/${post.id}`}
-          tags={post.tags}
-        />
-        <button type="button" class="card-remove-btn" data-remove-post={post.id} aria-label={`Delete ${post.title}`}>
-          Delete
-        </button>
-      </div>
-    ))}
-  </div>
+<EditHeader active="blog" />
+<main id="main-content" class="wrap">
+  <section class="section section--first" aria-labelledby="blog-h">
+    <h1 id="blog-h" class="h-section">Blog</h1>
+    <a class="editor-add-btn" href="/edit/blog/new">+ New post</a>
+    {posts.length === 0 ? (
+      <>
+        <p class="empty-note editor-empty-preview">{emptyStates.blog || 'Coming soon.'}</p>
+        <p class="editor-note">No posts yet — use "New post" above.</p>
+      </>
+    ) : (
+      <ul class="posts posts--paper" role="list">
+        {posts.map((post) => (
+          <li class="card-slot-wrap" data-post-id={post.id}>
+            <a class="title u" href={`/edit/blog/${post.id}`}>{post.title}</a>
+            <span class="when">{formatPostDate(post.date)}{post.draft && <em class="editor-draft"> · Draft</em>}</span>
+            <p class="desc">{post.description}</p>
+            <button type="button" class="card-remove-btn" data-remove-post={post.id} aria-label={`Delete ${post.title}`}>Delete</button>
+          </li>
+        ))}
+      </ul>
+    )}
 
-  <hr class="editor-divider" />
-  <label class="editor-field-label mono" for="empty-state-text-blog">Empty-state message</label>
-  <input id="empty-state-text-blog" class="editor-input" type="text" value={emptyStates.blog} data-editable="emptyState" />
-  <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
-</Band>
+    <div class="editor-field">
+      <label class="editor-field-label" for="empty-state-text-blog">Empty-state message</label>
+      <input id="empty-state-text-blog" class="editor-input" type="text" value={emptyStates.blog} data-editable="emptyState" />
+      <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
+    </div>
+  </section>
+</main>
 
 <script define:vars={{ emptyStates }}>
   window.__editorSeed = window.__editorSeed || {};
@@ -91,20 +97,3 @@ const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: '
     });
   }
 </script>
-
-<style>
-  h1 {
-    font-size: 2rem;
-    margin: 0 0 0.5rem;
-  }
-
-  .card-slot-wrap {
-    position: relative;
-  }
-
-  .editor-note {
-    max-width: 65ch;
-    font-size: 0.85rem;
-    color: var(--slate);
-  }
-</style>

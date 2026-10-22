@@ -29,6 +29,11 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 
+# Dev-team board (local agent coordination log)
+TEAM-BOARD.md
+TEAM-BOARD-INDEX.md
+TEAM-BOARD-ARCHIVE-*.md
+
 .vercel
 .env*
 # but keep the placeholder-only example file tracked (contains no real secrets)

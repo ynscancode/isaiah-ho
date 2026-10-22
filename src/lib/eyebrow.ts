@@ -62,3 +62,29 @@ export function deriveEyebrow(
   if (endMonthYear === startMonthYear) return `${category} · ${startMonthYear}`;
   return `${category} · ${startMonthYear} – ${endMonthYear}`;
 }
+
+// Additive sibling of deriveEyebrow for the redesigned public site's date
+// columns/meta: just the "MMM yyyy – MMM yyyy" range, no category prefix.
+// Reuses monthYear (ISO string-slice, KB-0003) and mirrors deriveEyebrow's
+// degrade rules: no usable start -> null (empty cell, never "undefined",
+// KB-0034); no usable end or same month -> start only.
+export function deriveDateRange(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined
+): string | null {
+  if (!startDate) return null;
+  const start = monthYear(startDate);
+  if (!start) return null;
+  if (!endDate) return start;
+  const end = monthYear(endDate);
+  if (!end || end === start) return start;
+  return `${start} – ${end}`;
+}
+
+// Blog post date for the Writing band and blog pages: "MMM yyyy" using the
+// same MONTHS table as the ledger/cards. Post dates are z.coerce.date() values
+// at UTC midnight, so UTC parts are the correct ones (KB-0003: no build-machine
+// timezone dependency).
+export function formatPostDate(date: Date): string {
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}

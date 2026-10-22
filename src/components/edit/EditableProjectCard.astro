@@ -1,0 +1,37 @@
+---
+// Mirrors src/components/site/ProjectCard.astro — keep class structure in sync.
+// Editable twin: contenteditable fields, date inputs, remove + edit-link
+// controls. All data-* hooks are the contract of EditCollection.astro's client
+// script. No <style> block (editor.css is global, so JS-cloned cards are
+// styled too). Keep values on the same line as their tags: whitespace inside
+// a contenteditable would be saved into the value.
+export type Props = {
+  id: string;
+  category: string;
+  startDate: string | null;
+  endDate: string | null;
+  title: string;
+  body: string;
+  detail?: string;
+  href?: string;
+};
+
+const { id, category, startDate, endDate, title, body, detail = '', href } = Astro.props;
+---
+
+<article class="card card-slot" data-entry-id={id}>
+  <p class="card__meta"><span contenteditable="true" role="textbox" data-editable={`${id}.category`} data-placeholder="Category" aria-label="Category">{category}</span></p>
+  <div class="editor-dates">
+    <label class="editor-date"><span class="editor-field-label">Start</span><input type="date" class="editor-input" value={startDate ?? ''} data-editable={`${id}.startDate`} /></label>
+    <label class="editor-date"><span class="editor-field-label">End</span><input type="date" class="editor-input" value={endDate ?? ''} data-editable={`${id}.endDate`} /></label>
+  </div>
+  <h3 contenteditable="true" data-editable={`${id}.title`} data-placeholder="Untitled">{title}</h3>
+  <p class="card__desc" contenteditable="true" role="textbox" data-editable={`${id}.body`} data-placeholder="One or two sentences on scope and impact." aria-label="Description" aria-multiline="true">{body}</p>
+  <div class="editor-card-extra">
+    <p class="editor-field-label" aria-hidden="true">Detail page text</p>
+    <div class="editor-detail" contenteditable="true" role="textbox" data-editable={`${id}.detail`} data-placeholder="Longer description for the project's own page (optional)." aria-label="Detail page text" aria-multiline="true">{detail}</div>
+    <p class="editor-href">Card link: <span data-editable-href-value={`${id}.href`}>{href || '(none)'}</span> <button type="button" class="editor-btn" data-editable-href={`${id}.href`} data-nullable="true">Edit link</button></p>
+    <p class="editor-note">No link = the card opens its own detail page.</p>
+    <button type="button" class="card-remove-btn" data-remove-entry={id} aria-label={`Remove ${title || 'entry'}`}>Remove</button>
+  </div>
+</article>

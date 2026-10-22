@@ -1,0 +1,60 @@
+---
+import ProjectCard from './ProjectCard.astro';
+import type { ProjectCardData } from './ProjectCard.astro';
+
+export type ProjectGroupData = {
+  label: string;
+  cards: ProjectCardData[];
+};
+
+export type Props = {
+  groups: ProjectGroupData[];
+  emptyText: string;
+};
+
+const { groups, emptyText } = Astro.props;
+const hasCards = groups.some((g) => g.cards.length > 0);
+const showFilters = groups.length >= 2;
+---
+
+<section id="projects" class="section" aria-labelledby="proj-h">
+  <div class="projects__head">
+    <h2 id="proj-h" class="h-section">Projects</h2>
+    {showFilters && (
+      <div class="filters" role="group" aria-label="Filter projects" data-filters>
+        <button class="chip" type="button" data-filter="all" aria-pressed="true">All</button>
+        {groups.map((group, i) => (
+          <button class="chip" type="button" data-filter={`g${i}`} aria-pressed="false">{group.label}</button>
+        ))}
+      </div>
+    )}
+  </div>
+  {hasCards ? (
+    <div class="grid" data-grid>
+      {groups.map((group, i) =>
+        group.cards.map((card) => <ProjectCard card={card} kind={`g${i}`} />)
+      )}
+    </div>
+  ) : (
+    <p class="empty-note">{emptyText}</p>
+  )}
+</section>
+
+<script>
+  // Project filter: toggles `hidden` on server-rendered cards.
+  document.querySelectorAll<HTMLElement>('[data-filters]').forEach((group) => {
+    const section = group.closest('section');
+    if (!section) return;
+    const chips = group.querySelectorAll<HTMLButtonElement>('.chip');
+    const cards = section.querySelectorAll<HTMLElement>('.card');
+    chips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const f = chip.dataset.filter;
+        chips.forEach((x) => x.setAttribute('aria-pressed', String(x === chip)));
+        cards.forEach((card) => {
+          card.hidden = !(f === 'all' || card.dataset.kind === f);
+        });
+      });
+    });
+  });
+</script>

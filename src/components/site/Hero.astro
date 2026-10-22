@@ -1,0 +1,70 @@
+---
+// Hero: live Singapore clock eyebrow, h1, lede, and up to two action pills.
+// Plain props only (no astro:content). `headline` is the raw stored string,
+// which may contain only <br> (see sanitizeHeadlineHtml); it is split on <br>,
+// any other tag is stripped, and the segments render as TEXT (never set:html).
+export type Props = {
+  headline: string;
+  lede: string;
+  email?: string;
+  linkedinUrl?: string;
+  linkedinLabel?: string;
+};
+
+const { headline, lede, email, linkedinUrl, linkedinLabel } = Astro.props;
+
+const lines = headline
+  .split(/<br\s*\/?>/i)
+  .map((segment) =>
+    segment
+      .replace(/<[^>]*>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .trim()
+  );
+---
+
+<section class="hero" aria-label="Introduction">
+  <div class="hero__copy">
+    <p class="hero__time">Singapore<span data-clock></span></p>
+    <h1 class="h-hero">
+      {lines.map((line, i) => (<>{i > 0 && <br />}{line}</>))}
+    </h1>
+    {lede && <p class="hero__lede">{lede}</p>}
+    {(email || linkedinUrl) && (
+      <div class="hero__actions">
+        {email && <a class="pill pill--accent" href={`mailto:${email}`}><span>Say hello</span></a>}
+        {linkedinUrl && (
+          <a class="pill pill--outline" href={linkedinUrl}><span>{linkedinLabel || 'LinkedIn'}</span></a>
+        )}
+      </div>
+    )}
+  </div>
+</section>
+
+<script>
+  // Live Singapore clock. Server render shows only "Singapore"; the time is
+  // appended client-side (no stale build-time value).
+  const el = document.querySelector<HTMLElement>('[data-clock]');
+  if (el) {
+    const fmt = new Intl.DateTimeFormat('en-SG', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Singapore',
+    });
+    const tick = () => {
+      try {
+        const next = ', ' + fmt.format(new Date()).toLowerCase();
+        if (el.textContent !== next) el.textContent = next;
+      } catch {
+        /* leave "Singapore" alone */
+      }
+    };
+    tick();
+    setInterval(tick, 15000);
+  }
+</script>

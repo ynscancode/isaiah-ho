@@ -1,44 +1,40 @@
 ---
 import { getCollection, getEntry } from 'astro:content';
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import Band from '../../components/Band.astro';
-import Card from '../../components/Card.astro';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import SiteHeader from '../../components/site/SiteHeader.astro';
+import SiteFooter from '../../components/site/SiteFooter.astro';
+import { formatPostDate } from '../../lib/eyebrow';
 
 const allPosts = await getCollection('blog', ({ data }) => !data.draft);
 const posts = allPosts.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
-const dateFormatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
-
 const emptyStatesEntry = await getEntry('site', 'emptyStates');
-const emptyStateText = emptyStatesEntry?.data.blog ?? 'Coming soon.';
+const emptyStateText = emptyStatesEntry?.data.blog || 'Coming soon.';
 ---
 
-<BaseLayout title="Blog" description="Writing by Isaiah Ho on structured thinking, case work, and consulting.">
-  <Band variant="paper">
-    <h1>Blog</h1>
-    {
-      posts.length > 0 ? (
-        <div class="cards">
-          {posts.map((post) => (
-            <Card
-              eyebrow={dateFormatter.format(post.data.date).toUpperCase()}
-              title={post.data.title}
-              body={post.data.description}
-              href={`/blog/${post.id}`}
-              tags={post.data.tags}
-            />
-          ))}
-        </div>
-      ) : (
-        <p class="empty-state">{emptyStateText}</p>
-      )
-    }
-  </Band>
-</BaseLayout>
-
-<style>
-  h1 {
-    font-size: 2rem;
-    margin: 0 0 0.5rem;
-  }
-</style>
+<SiteLayout title="Blog" description="Writing by Isaiah Ho on structured thinking, case work, and consulting.">
+  <SiteHeader />
+  <main id="main-content" class="wrap">
+    <section class="section section--first" aria-labelledby="blog-h">
+      <h1 id="blog-h" class="h-section">Blog</h1>
+      {
+        posts.length > 0 ? (
+          <ul class="posts posts--paper" role="list">
+            {posts.map((post) => (
+              <li>
+                <a class="title u" href={`/blog/${post.id}`}>{post.data.title}</a>
+                <span class="when">{formatPostDate(post.data.date)}</span>
+                <p class="desc">{post.data.description}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="empty-note">{emptyStateText}</p>
+        )
+      }
+    </section>
+  </main>
+  <div class="dark floor">
+    <div class="wrap"><SiteFooter /></div>
+  </div>
+</SiteLayout>

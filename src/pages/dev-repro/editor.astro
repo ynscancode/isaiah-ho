@@ -1,26 +1,30 @@
 ---
-// Dev-only repro harness for QA — senior-frontend-dev-20260722, batch
-// (editor newline collapse / eyebrow month+year). NOT part of the
-// production build/site nav: gated on import.meta.env.DEV so it 404s
-// outside `astro dev` and never ships in a static/production build.
-// Renders the real EditCollection component (same one behind /edit) with a
-// hand-seeded entry (not the production `src/data/*.json` files) so QA can:
-//   - reload this page (a genuine fresh server render, not a client-side
-//     nav) and see the seeded multi-line body render with real line breaks
-//     instead of collapsing to one line (Bug A). Note: the editable Card
-//     branch shows the raw `category` field + a native date picker, NOT
-//     the derived eyebrow string — that only appears on the public
-//     (non-editable) pages — so Bug B is verified below via a second,
-//     public-style Card using the exact same `deriveEyebrow` call the real
-//     experience/projects pages make.
-//   - see a public-style card's eyebrow line read "Work · Jun 2024 – Mar
-//     2025" instead of a bare year (Bug B).
+// DEV-only editor harness for QA / visual verification. 404s outside
+// `astro dev` (literal import.meta.env.DEV gate, KB-0018) and emits nothing
+// into the static build output.
+//
+// It renders exactly what /edit renders: EditLayout + the real Edit*
+// component with fixture props + the real EditorHarness toolbar, so every
+// view looks and behaves pixel-for-pixel like the real editor. Pick a view
+// with `?view=`; `?view=index` lists them all. One collection per page (the
+// collection script uses document.querySelector('[data-collection-list]')).
+//
+// Saves hit the REAL /api. With no session the middleware answers a generic
+// 404, so saveArea returns { ok:false, error:'http_404' } and the toolbar
+// shows the failure state — expected, and how failure routing is checked.
+// Nothing is stubbed except the `history-fixture` GET shim below.
 export const prerender = false;
 
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import Card from '../../components/Card.astro';
-import EditCollection, { type CollectionEntry } from '../../components/edit/EditCollection.astro';
-import { deriveEyebrow } from '../../lib/eyebrow';
+import EditLayout from '../../layouts/EditLayout.astro';
+import EditorHarness from '../../components/EditorHarness.astro';
+import EditHome from '../../components/edit/EditHome.astro';
+import EditAbout from '../../components/edit/EditAbout.astro';
+import EditContact from '../../components/edit/EditContact.astro';
+import EditCollection from '../../components/edit/EditCollection.astro';
+import EditBlogList from '../../components/edit/EditBlogList.astro';
+import EditBlogPost from '../../components/edit/EditBlogPost.astro';
+import EditHistory from '../../components/edit/EditHistory.astro';
+import * as fx from './_editorFixtures';
 
 if (!import.meta.env.DEV) {
   return new Response('Not found', {
@@ -29,40 +33,120 @@ if (!import.meta.env.DEV) {
   });
 }
 
-// Seeded entry: multi-line body (real \n, exactly what a fresh server
-// render of Card.astro emits into the contenteditable's initial text
-// node) and start/end dates in different months/years, so both bugs are
-// simultaneously reproducible from a single hard reload of this page.
-const entries: CollectionEntry[] = [
-  {
-    id: 'repro-1',
-    slug: 'repro-entry',
-    category: 'Work',
-    startDate: '2024-06-03',
-    endDate: '2025-03-20',
-    title: 'Repro entry — multi-line body + non-year dates',
-    body: 'Line one\nLine two\nLine three',
-    detail: 'Detail line one\nDetail line two',
-  },
-];
+const VIEWS = [
+  'index',
+  'home',
+  'home-noactions',
+  'readonly',
+  'about',
+  'about-photo',
+  'contact',
+  'contact-empty',
+  'projects',
+  'projects-flat',
+  'projects-empty',
+  'experience',
+  'experience-flat',
+  'experience-empty',
+  'blog-list',
+  'blog-list-empty',
+  'blog-post',
+  'blog-new',
+  'history',
+  'history-fixture',
+] as const;
+type View = (typeof VIEWS)[number];
 
-const emptyStates = { projects: '', experience: '', blog: '', contact: '' };
+const requested = Astro.url.searchParams.get('view') ?? 'index';
+if (!(VIEWS as readonly string[]).includes(requested)) {
+  return new Response('Not found', {
+    status: 404,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  });
+}
+const view = requested as View;
+
+const noEmpty = { projects: '', experience: '', blog: '', contact: '', highlights: '' };
+const fullActions = { email: 'hello@example.com', linkedinUrl: 'https://www.linkedin.com/in/example', linkedinLabel: 'LinkedIn' };
+const noActions = { linkedinLabel: 'LinkedIn' };
+const emptyContact = { lede: 'Get in touch.', links: [] };
 ---
 
-<BaseLayout title="Dev repro — editor" description="Dev-only repro harness (not indexed, DEV-gated).">
-  <section style="max-width: 420px; margin: 2rem auto;">
-    <h2 class="mono">Bug B check — public-style eyebrow (deriveEyebrow)</h2>
-    <Card
-      eyebrow={deriveEyebrow(entries[0].category, entries[0].startDate, entries[0].endDate)}
-      title={entries[0].title}
-      body={entries[0].body}
-      href="#"
-    />
-  </section>
-  <EditCollection
-    area="experience"
-    eyebrow="Dev repro"
-    entries={entries}
-    emptyStates={emptyStates}
-  />
-</BaseLayout>
+{view === 'index' ? (
+  <EditLayout title="Dev editor harness">
+    <main id="main-content" class="wrap">
+      <section class="section section--first">
+        <h1 class="h-section">Editor harness</h1>
+        <p class="editor-note">DEV only. Each link renders the real editor view with fixture data.</p>
+        <ul class="editor-harness-index">
+          {VIEWS.filter((v) => v !== 'index').map((v) => (
+            <li><a href={`/dev-repro/editor?view=${v}`}>{v}</a></li>
+          ))}
+        </ul>
+      </section>
+    </main>
+  </EditLayout>
+) : (
+  <EditLayout title={`Dev editor harness — ${view}`}>
+    {Astro.url.searchParams.get('confirm') === 'auto' && (
+      <script is:inline>
+        // Test scaffolding (DEV-gated page only, opt-in via &confirm=auto):
+        // auto-accept window.confirm so automation can drive delete/undo/restore.
+        window.confirm = () => true;
+      </script>
+    )}
+    {view === 'history-fixture' && (
+      <script is:inline define:vars={{ sessions: fx.historySessions }}>
+        // Test scaffolding (DEV-gated page only): answer GET /api/draft/history
+        // with fixture sessions; every other request passes through untouched.
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+          const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+          const method = (init && init.method) || (input instanceof Request ? input.method : 'GET');
+          if (method.toUpperCase() === 'GET' && new URL(url, location.href).pathname === '/api/draft/history') {
+            return Promise.resolve(
+              new Response(JSON.stringify({ sessions }), { status: 200, headers: { 'content-type': 'application/json' } })
+            );
+          }
+          return realFetch(input, init);
+        };
+      </script>
+    )}
+
+    {(view === 'home' || view === 'home-noactions') && (
+      <EditHome
+        hero={fx.hero}
+        highlights={fx.highlights}
+        projectsPool={fx.projectsPool}
+        blogPool={fx.blogPool}
+        emptyStates={fx.emptyStates}
+        actions={view === 'home' ? fullActions : noActions}
+      />
+    )}
+    {view === 'about' && <EditAbout about={{ body: fx.aboutBody, image: null }} />}
+    {view === 'about-photo' && <EditAbout about={{ body: fx.aboutBody, image: 'src/assets/fixture-photo.jpg' }} />}
+    {view === 'contact' && <EditContact contact={{ lede: 'Let us talk about something interesting.', links: fx.contactLinks }} emptyStates={fx.emptyStates} />}
+    {view === 'contact-empty' && <EditContact contact={emptyContact} emptyStates={fx.emptyStates} />}
+    {view === 'projects' && (
+      <EditCollection area="projects" entries={fx.projectEntries} emptyStates={fx.emptyStates} categoryOrder={fx.projectCategoryOrder} />
+    )}
+    {view === 'projects-flat' && (
+      <EditCollection area="projects" entries={fx.projectEntries.slice(0, 2).map((e) => ({ ...e, category: 'Research' }))} emptyStates={fx.emptyStates} categoryOrder={[]} />
+    )}
+    {view === 'projects-empty' && <EditCollection area="projects" entries={[]} emptyStates={fx.emptyStates} categoryOrder={[]} />}
+    {(view === 'experience' || view === 'readonly') && (
+      <EditCollection area="experience" entries={fx.experienceEntries} emptyStates={fx.emptyStates} categoryOrder={fx.experienceCategoryOrder} />
+    )}
+    {view === 'experience-flat' && (
+      <EditCollection area="experience" entries={fx.experienceEntries.slice(0, 2)} emptyStates={fx.emptyStates} categoryOrder={[]} />
+    )}
+    {view === 'experience-empty' && <EditCollection area="experience" entries={[]} emptyStates={fx.emptyStates} categoryOrder={[]} />}
+    {view === 'blog-list' && <EditBlogList posts={fx.blogPosts} emptyStates={fx.emptyStates} />}
+    {view === 'blog-list-empty' && <EditBlogList posts={[]} emptyStates={noEmpty} />}
+    {view === 'blog-post' && <EditBlogPost post={fx.blogPost} isNew={false} />}
+    {view === 'blog-new' && <EditBlogPost post={fx.newBlogPost} isNew={true} />}
+    {(view === 'history' || view === 'history-fixture') && <EditHistory />}
+
+    <EditorHarness slot="editor-toolbar" contentSource={view === 'readonly' ? 'build' : 'draft'} />
+  </EditLayout>
+)}

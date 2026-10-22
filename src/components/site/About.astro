@@ -1,0 +1,24 @@
+---
+// `bodyHtml` MUST come from bodyToHtml() (src/lib/plainText.ts) - the only
+// permitted set:html source. `image` null/empty omits the figure.
+export type Props = {
+  bodyHtml: string;
+  image?: string | null;
+};
+
+const { bodyHtml, image } = Astro.props;
+---
+
+<section id="about" class="section section--first" aria-labelledby="about-h">
+  <div class="about">
+    <div class="about__copy">
+      <h2 id="about-h" class="h-section">About</h2>
+      <div class="body" set:html={bodyHtml} />
+    </div>
+    {image && (
+      <figure class="photo">
+        <img src={image} alt="Isaiah Ho" />
+      </figure>
+    )}
+  </div>
+</section>

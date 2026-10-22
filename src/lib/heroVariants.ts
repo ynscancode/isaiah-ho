@@ -1,8 +1,9 @@
 // Single source of truth for the homepage hero-graphic variants (KB-0008 —
 // one canonical list; every other place points here so the allowlist can't
-// drift). Imported by: the public+editor renderer (HeroGraphic.astro), the
-// astro:content read schema (content.config.ts), the editor write/trust
-// boundary (schemas.ts), and the editor switcher UI (EditHome.astro).
+// drift). Imported by: the astro:content read schema (content.config.ts), the
+// editor write/trust boundary (schemas.ts), and EditHome.astro (for
+// DEFAULT_HERO_VARIANT, when round-tripping the stored graphic). The graphic
+// itself is not rendered by the redesigned site.
 //
 // Dependency-free so it's safe to import from server code, browser scripts,
 // AND the content-collection config.

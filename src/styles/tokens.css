@@ -1,0 +1,19 @@
+:root{
+  --floor:#4F1D23;          /* oxblood: hero + contact/footer ground */
+  --ink:#1B1718;            /* body text; Writing band ground */
+  --ink-2:#3B3537;          /* secondary body text */
+  --muted:#5F5759;          /* labels, captions, dates on paper */
+  --paper:#F3F0EA;          /* page ground; text on dark */
+  --paper-muted:#D9CFC9;    /* secondary text on floor */
+  --paper-muted-ink:#CFC7C2;/* secondary text on ink */
+  --card:#FFFFFF;
+  --line:#DAD4CB;           /* hairlines on paper */
+  --line-soft:#ECE7DF;
+  --line-dark:rgba(243,240,234,.22); /* hairlines on dark */
+  --outline-dark:rgba(243,240,234,.6);
+  --accent:#EDB27C;         /* apricot: buttons + italic phrase on dark only */
+  --font-display:"EB Garamond", Georgia, serif;
+  --font-text:"Literata", Georgia, serif;
+  --max:1120px;
+  --gutter:clamp(20px,5vw,48px);
+}

@@ -1,6 +1,7 @@
 ---
-import Band from '../Band.astro';
-import Card from '../Card.astro';
+import EditHeader from './EditHeader.astro';
+import EditableExperienceRow from './EditableExperienceRow.astro';
+import EditableProjectCard from './EditableProjectCard.astro';
 import { groupByCategory } from '../../lib/experienceGroups';
 
 export type CollectionEntry = {
@@ -17,7 +18,6 @@ export type CollectionEntry = {
 
 export type Props = {
   area: 'projects' | 'experience';
-  eyebrow: string;
   entries: CollectionEntry[];
   emptyStates: { projects: string; experience: string; blog: string; contact: string };
   /** Canonical persisted category order for THIS area, from site.json's
@@ -25,21 +25,19 @@ export type Props = {
   categoryOrder: string[];
 };
 
-const { area, eyebrow, entries, emptyStates, categoryOrder } = Astro.props;
-const heading = area === 'projects' ? 'Projects' : 'Experience';
+const { area, entries, emptyStates, categoryOrder } = Astro.props;
+const isExperience = area === 'experience';
 
 // tech-lead-20260720T160424Z Item 3 / ui-ux-designer-20260721T050000Z,
 // extended by engineering-director RULING 2 (category-reorder batch,
-// 20260729) to ALSO cover the projects branch of THIS editor (the public
-// /projects page — src/pages/projects.astro — stays a flat, ungrouped list,
-// byte-unchanged). Computed once here at server render ("load time") from
-// the seed `entries` prop plus the canonical persisted `categoryOrder`
-// (site.json `ordering` entry, tech-lead-20260729T162747 — the ONE
-// ordering authority; the entries array orders nothing but the cards
-// WITHIN a group), NOT reactive to later client-side edits (a
-// category contenteditable change re-groups only on the next full page
-// load; a category MOVE re-renders client-side instead — see the inline
-// script below).
+// 20260729) to ALSO cover the projects branch of THIS editor. Computed once
+// here at server render ("load time") from the seed `entries` prop plus the
+// canonical persisted `categoryOrder` (site.json `ordering` entry,
+// tech-lead-20260729T162747 — the ONE ordering authority; the entries array
+// orders nothing but the cards WITHIN a group), NOT reactive to later
+// client-side edits (a category contenteditable change re-groups only on the
+// next full page load; a category MOVE re-renders client-side instead — see
+// the inline script below).
 const groups = groupByCategory(entries, (entry) => entry.category, categoryOrder);
 const showSubheads = groups.length > 1;
 // Reorderable (non-pinned) subset, in display order — used to compute each
@@ -49,122 +47,150 @@ const showSubheads = groups.length > 1;
 const reorderableGroups = groups.filter((group) => !group.isPinned);
 ---
 
-<Band variant="paper" eyebrow={eyebrow} as="div">
-  <h1>{heading}</h1>
-  {area === 'projects' && (
-    <p class="editor-note">Category order here is saved to the draft, but the public Projects page currently shows all projects in one flat list — this order isn't visible there yet.</p>
-  )}
-  {showSubheads ? (
-    <div class="collection-groups" data-editable-area={area} data-collection-list>
-      {groups.map((group) => {
-        const reorderIndex = reorderableGroups.indexOf(group);
-        const isFirstReorderable = reorderIndex === 0;
-        const isLastReorderable = reorderIndex === reorderableGroups.length - 1;
-        return (
-        <div
-          class="category-group"
-          data-category-group={group.isPinned ? undefined : group.category}
-          data-pinned-group={group.isPinned ? 'true' : undefined}
-        >
-          <div class="group-subhead-row">
-            <h2 class="mono group-subhead" tabindex="-1">{group.category}</h2>
-            {!group.isPinned && (
-              <span class="group-move-controls">
-                <button
-                  type="button"
-                  class="group-move-btn"
-                  data-move-category={group.category}
-                  data-move-dir="up"
-                  aria-label={`Move ${group.category} up`}
-                  disabled={isFirstReorderable}
-                >Move up</button>
-                <button
-                  type="button"
-                  class="group-move-btn"
-                  data-move-category={group.category}
-                  data-move-dir="down"
-                  aria-label={`Move ${group.category} down`}
-                  disabled={isLastReorderable}
-                >Move down</button>
-              </span>
-            )}
-            {group.isPinned && (
-              <span class="editor-note pinned-note mono">(always last)</span>
-            )}
-          </div>
-          <div class="cards">
-            {group.entries.map((entry) => (
-              <div class="card-slot" data-entry-id={entry.id}>
-                <Card
-                  category={entry.category}
-                  startDate={entry.startDate}
-                  endDate={entry.endDate}
-                  title={entry.title}
-                  body={entry.body}
-                  href={entry.href}
-                  detail={entry.detail}
-                  editable
-                  editablePrefix={entry.id}
-                  removable
-                />
+<EditHeader active={area} />
+<main id="main-content" class="wrap">
+  <section id={area} class="section section--first" aria-labelledby={`${area}-h`}>
+    {isExperience ? (
+      <h1 id="experience-h" class="h-section">Experience</h1>
+    ) : (
+      <>
+        <div class="projects__head"><h1 id="projects-h" class="h-section">Projects</h1></div>
+        <p class="editor-note">Category order here is the filter-chip order on the site; cards show in this order in one grid.</p>
+      </>
+    )}
+    {showSubheads ? (
+      <div class={isExperience ? 'exp-groups' : 'editor-groups'} data-editable-area={area} data-collection-list>
+        {groups.map((group) => {
+          const reorderIndex = reorderableGroups.indexOf(group);
+          const isFirstReorderable = reorderIndex === 0;
+          const isLastReorderable = reorderIndex === reorderableGroups.length - 1;
+          return (
+            <div
+              class={isExperience ? 'exp-group category-group' : 'category-group'}
+              data-category-group={group.isPinned ? undefined : group.category}
+              data-pinned-group={group.isPinned ? 'true' : undefined}
+            >
+              <div class="group-subhead-row">
+                <h2 class={isExperience ? 'group-subhead' : 'group-subhead chip'} tabindex="-1">{group.category}</h2>
+                {!group.isPinned && (
+                  <span class="group-move-controls">
+                    <button
+                      type="button"
+                      class="group-move-btn"
+                      data-move-category={group.category}
+                      data-move-dir="up"
+                      aria-label={`Move ${group.category} up`}
+                      disabled={isFirstReorderable}
+                    >Move up</button>
+                    <button
+                      type="button"
+                      class="group-move-btn"
+                      data-move-category={group.category}
+                      data-move-dir="down"
+                      aria-label={`Move ${group.category} down`}
+                      disabled={isLastReorderable}
+                    >Move down</button>
+                  </span>
+                )}
+                {group.isPinned && <span class="editor-note pinned-note">(always last)</span>}
               </div>
+              {isExperience
+                ? group.entries.map((entry) => (
+                    <EditableExperienceRow
+                      id={entry.id}
+                      category={entry.category}
+                      startDate={entry.startDate}
+                      endDate={entry.endDate}
+                      title={entry.title}
+                      body={entry.body}
+                      detail={entry.detail}
+                      href={entry.href}
+                    />
+                  ))
+                : (
+                  <div class="grid">
+                    {group.entries.map((entry) => (
+                      <EditableProjectCard
+                        id={entry.id}
+                        category={entry.category}
+                        startDate={entry.startDate}
+                        endDate={entry.endDate}
+                        title={entry.title}
+                        body={entry.body}
+                        detail={entry.detail}
+                        href={entry.href}
+                      />
+                    ))}
+                  </div>
+                )}
+            </div>
+          );
+        })}
+        {/* ui-ux-designer-20260721T050000Z Item 3.2 — trailing, unlabeled
+            "pending" group. New entries created via "+ Add" during this
+            session land here (not prematurely bucketed into "Other"); the
+            grouping re-reflects on the next full page load. Hidden by CSS
+            while empty. */}
+        {isExperience ? (
+          <div class="exp-group category-group pending-group"><div data-collection-sink /></div>
+        ) : (
+          <div class="category-group pending-group"><div class="grid" data-collection-sink /></div>
+        )}
+      </div>
+    ) : isExperience ? (
+      <div class="exp-groups">
+        <div class="exp-group">
+          {groups[0] && <h2 class="group-subhead">{groups[0].category}</h2>}
+          <div data-editable-area="experience" data-collection-list>
+            {entries.map((entry) => (
+              <EditableExperienceRow
+                id={entry.id}
+                category={entry.category}
+                startDate={entry.startDate}
+                endDate={entry.endDate}
+                title={entry.title}
+                body={entry.body}
+                detail={entry.detail}
+                href={entry.href}
+              />
             ))}
           </div>
         </div>
-        );
-      })}
-      {/* ui-ux-designer-20260721T050000Z Item 3.2 — trailing, unlabeled
-          "pending" grid. New entries created via "+ Add" during this
-          session land here (not prematurely bucketed into "Other"); the
-          grouping re-reflects on the next full page load. Gets the same
-          border-top divider treatment as any group boundary via
-          .category-group, but no subhead text. */}
-      <div class="category-group pending-group">
-        <div class="cards" data-collection-sink />
       </div>
-    </div>
-  ) : (
-    <div class="cards" data-editable-area={area} data-collection-list>
-      {entries.map((entry) => (
-        <div class="card-slot" data-entry-id={entry.id}>
-          <Card
+    ) : (
+      <div class="grid" data-editable-area="projects" data-collection-list>
+        {entries.map((entry) => (
+          <EditableProjectCard
+            id={entry.id}
             category={entry.category}
             startDate={entry.startDate}
             endDate={entry.endDate}
             title={entry.title}
             body={entry.body}
-            href={entry.href}
             detail={entry.detail}
-            editable
-            editablePrefix={entry.id}
-            removable
+            href={entry.href}
           />
-        </div>
-      ))}
-    </div>
-  )}
-  <button type="button" class="editor-add-btn" id={`add-${area}-entry`}>+ Add {area === 'projects' ? 'project' : 'entry'}</button>
+        ))}
+      </div>
+    )}
+    <p class="empty-note editor-empty-preview">{emptyStates[area] || 'Coming soon.'}</p>
+    <button type="button" class="editor-add-btn" id={`add-${area}-entry`}>+ Add {isExperience ? 'entry' : 'project'}</button>
 
-  <template id={`tpl-${area}-card`}>
-    <div class="card-slot" data-entry-id="__ID__">
-      <Card
-        category=""
-        startDate={null}
-        endDate={null}
-        title=""
-        body=""
-        editable
-        editablePrefix="__ID__"
-        removable
-      />
-    </div>
-  </template>
+    <template id={`tpl-${area}-card`}>
+      {isExperience ? (
+        <EditableExperienceRow id="__ID__" category="" startDate={null} endDate={null} title="" body="" />
+      ) : (
+        <EditableProjectCard id="__ID__" category="" startDate={null} endDate={null} title="" body="" />
+      )}
+    </template>
 
-  <hr class="editor-divider" />
-  <label class="editor-field-label mono" for={`empty-state-text-${area}`}>Empty-state message</label>
-  <input id={`empty-state-text-${area}`} class="editor-input" type="text" value={emptyStates[area]} data-editable="emptyState" />
-  <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
-</Band>
+    <div class="editor-field">
+      <label class="editor-field-label" for={`empty-state-text-${area}`}>Empty-state message</label>
+      <input id={`empty-state-text-${area}`} class="editor-input" type="text" value={emptyStates[area]} data-editable="emptyState" />
+      <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
+    </div>
+  </section>
+</main>
 
 <script define:vars={{ area, entries, emptyStates, categoryOrder }}>
   // define:vars serializes `entries`/`area`/`emptyStates`/`categoryOrder`
@@ -900,96 +926,3 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
     }
   }
 </script>
-
-<style>
-  h1 {
-    font-size: 2rem;
-    margin: 0 0 0.5rem;
-  }
-
-  template {
-    display: none;
-  }
-
-  /* ui-ux-designer-20260721T050000Z Item 3.2 — same "group subhead"
-     rhythm as experience.astro, mirrored here for the editor's grouped
-     render (director RULING 2, category-reorder batch: now used by BOTH
-     the experience and projects branches of THIS editor — the public
-     /projects page never renders .category-group). Scoped to this
-     component, does NOT touch the shared global .cards rule. */
-  .category-group {
-    margin-top: 2.5rem;
-  }
-
-  .category-group:first-of-type {
-    margin-top: 2rem;
-  }
-
-  .category-group:not(:first-of-type) {
-    border-top: 1px solid var(--line);
-    padding-top: 2rem;
-  }
-
-  .category-group .cards {
-    margin-top: 1.25rem;
-  }
-
-  .group-subhead {
-    color: var(--signal-text);
-    margin: 0 0 0.6rem;
-  }
-
-  /* ui-ux-designer-20260729T193000 §6 — category-group Move up/down
-     control, byte-for-byte reuse of EditHome.astro's .highlights-move-btn
-     family (same values, same disabled treatment; no new tokens). */
-  .group-subhead-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    margin: 0 0 0.6rem;
-  }
-
-  .group-subhead-row .group-subhead {
-    margin: 0;
-  }
-
-  .group-move-controls {
-    display: flex;
-    gap: 0.4rem;
-  }
-
-  .group-move-btn {
-    font-size: 0.72rem;
-    color: var(--ink);
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 0.35rem 0.55rem;
-    cursor: pointer;
-  }
-
-  .group-move-btn:hover:not(:disabled) {
-    border-color: var(--signal);
-  }
-
-  .group-move-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  /* ui-ux-designer-20260729T193000 §3 — pinned ("Other") group note, next
-     to its subhead in the same row; reuses .editor-note typography, scaled
-     down and inline (no block width cap). */
-  .pinned-note {
-    margin: 0;
-    font-size: 0.72rem;
-  }
-
-  .editor-note {
-    max-width: 65ch;
-    font-size: 0.85rem;
-    color: var(--slate);
-  }
-</style>

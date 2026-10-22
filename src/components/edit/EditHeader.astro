@@ -1,0 +1,33 @@
+---
+// Mirrors src/components/site/SiteHeader.astro — keep class structure in sync.
+// Oxblood header ground with editor-section links; the default slot renders
+// inside the same floor/wrap (the home editor puts the hero there).
+export type Props = {
+  active: 'home' | 'about' | 'experience' | 'projects' | 'blog' | 'contact' | 'history';
+};
+
+const { active } = Astro.props;
+const links = [
+  { id: 'home', label: 'Home', href: '/edit' },
+  { id: 'about', label: 'About', href: '/edit/about' },
+  { id: 'experience', label: 'Experience', href: '/edit/experience' },
+  { id: 'projects', label: 'Projects', href: '/edit/projects' },
+  { id: 'blog', label: 'Blog', href: '/edit/blog' },
+  { id: 'contact', label: 'Contact', href: '/edit/contact' },
+  { id: 'history', label: 'History', href: '/edit/history' },
+];
+---
+
+<div class="dark floor" id="top">
+  <div class="wrap">
+    <header class="site-header">
+      <a class="wordmark u" href="/edit">Isaiah Ho</a>
+      <nav class="nav" aria-label="Editor sections">
+        {links.map((link) => (
+          <a class="u" href={link.href} aria-current={link.id === active ? 'page' : undefined}>{link.label}</a>
+        ))}
+      </nav>
+    </header>
+    <slot />
+  </div>
+</div>

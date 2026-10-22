@@ -1,0 +1,34 @@
+---
+// Contact ground. The default slot renders inside the same floor/wrap (the
+// homepage puts SiteFooter there). Empty email/linkedinUrl omit that pill; if
+// neither is usable, `emptyText` is shown.
+export type Props = {
+  lede: string;
+  email?: string;
+  linkedinUrl?: string;
+  linkedinLabel?: string;
+  emptyText: string;
+};
+
+const { lede, email, linkedinUrl, linkedinLabel, emptyText } = Astro.props;
+---
+
+<div class="dark floor" id="contact">
+  <div class="wrap">
+    <section class="contact" aria-labelledby={lede ? 'contact-h' : undefined} aria-label={lede ? undefined : 'Contact'}>
+      <p class="label">Contact</p>
+      {lede && <h2 id="contact-h" class="h-contact">{lede}</h2>}
+      {(email || linkedinUrl) ? (
+        <div class="contact__actions">
+          {email && <a class="pill pill--accent" href={`mailto:${email}`}><span>{email}</span></a>}
+          {linkedinUrl && (
+            <a class="pill pill--outline" href={linkedinUrl}><span>{linkedinLabel || 'LinkedIn'}</span></a>
+          )}
+        </div>
+      ) : (
+        <p class="contact__empty">{emptyText}</p>
+      )}
+    </section>
+    <slot />
+  </div>
+</div>

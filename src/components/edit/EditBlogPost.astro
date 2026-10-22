@@ -1,5 +1,8 @@
 ---
-import Band from '../Band.astro';
+// Mirrors src/pages/blog/[slug].astro — keep class structure in sync.
+// Editable twin of a blog post page: the same meta line / title / tags
+// arrangement, but as form fields. No <style> block (editor.css is global).
+import EditHeader from './EditHeader.astro';
 
 export type BlogPostData = {
   slug: string;
@@ -19,41 +22,40 @@ export type Props = {
 const { post, isNew } = Astro.props;
 ---
 
-<Band variant="paper" as="div">
-  <a class="back-link" href="/edit/blog">&larr; Back to blog list</a>
-  <h1>{isNew ? 'New blog post' : `Editing: ${post.title}`}</h1>
+<EditHeader active="blog" />
+<main id="main-content" class="wrap">
+  <article class="section section--first" data-editable-area="blog" data-is-new={isNew ? 'true' : 'false'} data-slug={post.slug}>
+    <a class="back u" href="/edit/blog">&larr; Back to posts</a>
+    <h1 class="visually-hidden">{isNew ? 'New blog post' : `Editing: ${post.title}`}</h1>
 
-  <div data-editable-area="blog" data-is-new={isNew ? 'true' : 'false'} data-slug={post.slug}>
-    <label class="editor-field-label mono" for="post-title">Title</label>
-    <input id="post-title" class="editor-input" type="text" value={post.title} data-editable="title" />
-
-    <label class="editor-field-label mono" for="post-description">Description</label>
-    <input id="post-description" class="editor-input" type="text" value={post.description} data-editable="description" />
-
-    <div class="editor-inline-controls">
-      <div>
-        <label class="editor-field-label mono" for="post-date">Date</label>
-        <input id="post-date" class="editor-input" type="date" value={post.date} data-editable="date" />
-      </div>
-      <div>
-        <label class="editor-field-label mono" for="post-draft">
-          <input id="post-draft" type="checkbox" checked={post.draft} data-editable="draft" /> Draft (unpublished)
-        </label>
-      </div>
+    <div class="editor-post-meta">
+      <label class="editor-field-label" for="post-date">Date</label>
+      <input id="post-date" class="editor-input" type="date" value={post.date} data-editable="date" />
+      <label class="editor-field-label" for="post-draft">
+        <input id="post-draft" type="checkbox" checked={post.draft} data-editable="draft" />Draft (unpublished)
+      </label>
     </div>
 
-    <label class="editor-field-label mono" for="post-tags">Tags (comma-separated)</label>
-    <input id="post-tags" class="editor-input" type="text" value={post.tags.join(', ')} data-editable="tags" />
+    <div class="editor-post-field">
+      <label class="editor-field-label" for="post-tags">Tags (comma-separated)</label>
+    <input id="post-tags" class="editor-input editor-input--tags" type="text" placeholder="Tags, comma-separated" value={post.tags.join(', ')} data-editable="tags" />
+    </div>
 
-    <label class="editor-field-label mono" for="post-body">Body</label>
-    <textarea id="post-body" class="editor-textarea" data-editable="body">{post.body}</textarea>
-    <p class="editor-note">
-      Line breaks and blank lines are preserved as written — no special formatting needed.
-    </p>
+    <label class="visually-hidden" for="post-title">Title</label>
+    <input id="post-title" class="editor-input editor-input--title" type="text" placeholder="Post title" value={post.title} data-editable="title" />
+
+    <div class="editor-post-field">
+      <label class="editor-field-label" for="post-description">Description (shown on the blog list and in search results)</label>
+      <input id="post-description" class="editor-input" type="text" value={post.description} data-editable="description" />
+    </div>
+
+    <label class="visually-hidden" for="post-body">Body</label>
+    <textarea id="post-body" class="editor-textarea editor-textarea--body" data-editable="body">{post.body}</textarea>
+    <p class="editor-note">Line breaks and blank lines are preserved as written — no special formatting needed.</p>
 
     {!isNew && (
       <p class="editor-note">
-        Slug <code>{post.slug}</code> is fixed — editing the title does not change the post's URL.
+        Slug <em>{post.slug}</em> is fixed — editing the title does not change the post's URL.
       </p>
     )}
     {isNew && (
@@ -61,8 +63,8 @@ const { post, isNew } = Astro.props;
         The URL slug is generated from the title the first time you save, then stays fixed.
       </p>
     )}
-  </div>
-</Band>
+  </article>
+</main>
 
 <script define:vars={{ post, isNew }}>
   window.__editorSeed = window.__editorSeed || {};
@@ -229,32 +231,3 @@ const { post, isNew } = Astro.props;
     });
   }
 </script>
-
-<style>
-  h1 {
-    font-size: clamp(1.6rem, 3vw, 2.2rem);
-    margin: 0.5rem 0 1.5rem;
-  }
-
-  .back-link {
-    display: inline-block;
-    color: var(--signal-text);
-    text-decoration: none;
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 0.9rem;
-  }
-
-  .back-link:hover {
-    text-decoration: underline;
-  }
-
-  .editor-note {
-    margin-top: 1.5rem;
-    font-size: 0.85rem;
-    color: var(--slate);
-  }
-
-  .editor-note code {
-    font-family: "IBM Plex Mono", monospace;
-  }
-</style>

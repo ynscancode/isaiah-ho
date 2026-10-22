@@ -1,0 +1,30 @@
+---
+// Oxblood header ground. The default slot renders inside the same floor/wrap
+// (the homepage puts the Hero there). `home` picks the link base: on the
+// homepage links are in-page anchors; on subpages they point back to `/#...`.
+export type Props = {
+  home?: boolean;
+};
+
+const { home = false } = Astro.props;
+const base = home ? '' : '/';
+const links = [
+  { id: 'about', label: 'About' },
+  { id: 'experience', label: 'Experience' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'writing', label: 'Writing' },
+  { id: 'contact', label: 'Contact' },
+];
+---
+
+<div class="dark floor" id="top">
+  <div class="wrap">
+    <header class="site-header">
+      <a class="wordmark u" href={home ? '#top' : '/'}>Isaiah Ho</a>
+      <nav class="nav" aria-label="Sections">
+        {links.map((link) => <a class="u" href={`${base}#${link.id}`}>{link.label}</a>)}
+      </nav>
+    </header>
+    <slot />
+  </div>
+</div>
