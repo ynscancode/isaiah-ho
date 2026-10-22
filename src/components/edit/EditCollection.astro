@@ -50,7 +50,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
 
 <EditHeader active={area} />
 <main id="main-content" class="wrap">
-  <section id={area} class="section section--first" aria-labelledby={`${area}-h`}>
+  <section id={area} data-collection-root={area} class="section section--first" aria-labelledby={`${area}-h`}>
     {isExperience ? (
       <h1 id="experience-h" class="h-section">Experience</h1>
     ) : (
@@ -222,7 +222,11 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
     detail?: string;
   };
 
-  const list = document.querySelector<HTMLElement>('[data-collection-list]');
+  // Per-instance init (tech-lead-20261022T122044 D5): this processed script
+  // runs ONCE per page though the component renders twice (experience +
+  // projects), so each instance is wired from its own root.
+  function initCollection(root: HTMLElement) {
+  const list = root.querySelector<HTMLElement>('[data-collection-list]');
   const areaAttr = list?.getAttribute('data-editable-area');
   const area = areaAttr === 'projects' || areaAttr === 'experience' ? areaAttr : null;
   // Ungrouped render (projects always; experience when groups.length <= 1):
@@ -231,7 +235,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
   // all `.category-group`s, and appends must land in the trailing,
   // unlabeled "pending" grid instead (ui-ux-designer-20260721T050000Z item
   // 3.2) — marked `data-collection-sink`.
-  const sink = document.querySelector<HTMLElement>('[data-collection-sink]') ?? list;
+  const sink = root.querySelector<HTMLElement>('[data-collection-sink]') ?? list;
   if (list && sink && area) {
     // Re-bind to a narrowed const: TS doesn't retain the `area !== null`
     // narrowing for a variable captured by the nested save() closure below.
@@ -692,7 +696,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
     // when `showSubheads` was true at render time; on the ungrouped render
     // (projects/experience with <=1 category) it has no `.group-move-btn`
     // descendants, so all of the wiring below is a no-op — safe either way.
-    const pendingGroupEl = document.querySelector<HTMLElement>('.category-group.pending-group');
+    const pendingGroupEl = root.querySelector<HTMLElement>('.category-group.pending-group');
     // (`categoryOf` is declared up with the `workingOrder` init above, which
     // is its first use — no reliance on function-declaration hoisting.)
 
@@ -919,4 +923,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
       });
     }
   }
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-collection-root]').forEach(initCollection);
 </script>
