@@ -85,34 +85,61 @@ export async function ensureDraft(): Promise<DraftSyncState | null> {
   return null;
 }
 
-export async function saveArea(area: string, body: unknown): Promise<SaveResult> {
-  await ensureDraft();
-  const res = await fetch(`/api/content/${area}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-    body: JSON.stringify(body),
-  });
-  const data = await parseJsonSafe<{ commitSha?: string; error?: string; action?: string }>(res);
-  if (!res.ok) {
-    checkReauthNeeded(res.status, data);
-    return { ok: false, error: data?.error ?? `http_${res.status}`, action: data?.action };
-  }
-  return { ok: true, commitSha: data?.commitSha };
+// --- Page-global write queue (tech-lead-20261022T122044 D1) ---
+//
+// /edit is one continuous page with many independent autosavers. Several of
+// the server's content writes are read-modify-write on site.json with a
+// GitHub contents-API `sha` precondition, plus commits to the same branch, so
+// concurrent POSTs conflict ("Save failed"). Every mutating network call that
+// touches the draft goes through this single promise chain so they run
+// strictly one after another, in the order they were requested.
+let writeChain: Promise<unknown> = Promise.resolve();
+
+/** Run `fn` after every previously queued write has settled (success OR
+ * failure — a failed write never blocks the queue). Resolves/rejects with
+ * `fn`'s own outcome. */
+export function serializeWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(fn, fn);
+  writeChain = run.catch(() => undefined);
+  return run;
 }
 
-export async function deleteBlogPost(slug: string): Promise<SaveResult> {
-  await ensureDraft();
-  const res = await fetch('/api/content/blog', {
-    method: 'DELETE',
-    headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-    body: JSON.stringify({ slug }),
+export function saveArea(area: string, body: unknown): Promise<SaveResult> {
+  // Serialize the payload SYNCHRONOUSLY at call time so it equals the
+  // autosaver's `sent` snapshot, regardless of how long it waits in the queue.
+  const payload = JSON.stringify(body);
+  return serializeWrite(async (): Promise<SaveResult> => {
+    await ensureDraft();
+    const res = await fetch(`/api/content/${area}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+      body: payload,
+    });
+    const data = await parseJsonSafe<{ commitSha?: string; error?: string; action?: string }>(res);
+    if (!res.ok) {
+      checkReauthNeeded(res.status, data);
+      return { ok: false, error: data?.error ?? `http_${res.status}`, action: data?.action };
+    }
+    return { ok: true, commitSha: data?.commitSha };
   });
-  if (!res.ok) {
-    const data = await parseJsonSafe<{ error?: string; action?: string }>(res);
-    checkReauthNeeded(res.status, data);
-    return { ok: false, error: data?.error ?? `http_${res.status}`, action: data?.action };
-  }
-  return { ok: true };
+}
+
+export function deleteBlogPost(slug: string): Promise<SaveResult> {
+  const payload = JSON.stringify({ slug });
+  return serializeWrite(async (): Promise<SaveResult> => {
+    await ensureDraft();
+    const res = await fetch('/api/content/blog', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+      body: payload,
+    });
+    if (!res.ok) {
+      const data = await parseJsonSafe<{ error?: string; action?: string }>(res);
+      checkReauthNeeded(res.status, data);
+      return { ok: false, error: data?.error ?? `http_${res.status}`, action: data?.action };
+    }
+    return { ok: true };
+  });
 }
 
 export type PreviewSyncState = 'synced' | 'already-current' | 'conflict';
@@ -137,20 +164,23 @@ export type PreviewResult = {
  * preview build. Response contract per senior-backend-dev-20260720T052230.
  * Returns null on failure (caller shows "no draft yet" / retry messaging;
  * never a false "ready"). */
-export async function fetchPreview(): Promise<PreviewResult | null> {
+export function fetchPreview(): Promise<PreviewResult | null> {
   // POST + CSRF token: the endpoint now triggers an on-demand build, so it's
   // a CSRF-checked mutation (see src/pages/api/draft/preview.ts). Mirrors the
-  // header + reauth handling of the other mutating calls above.
-  const res = await fetch('/api/draft/preview', {
-    method: 'POST',
-    headers: { 'X-CSRF-Token': getCsrfToken() },
+  // header + reauth handling of the other mutating calls above. Queued behind
+  // any in-flight content save so the preview builds the just-saved draft.
+  return serializeWrite(async (): Promise<PreviewResult | null> => {
+    const res = await fetch('/api/draft/preview', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCsrfToken() },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      checkReauthNeeded(res.status, data);
+      return null;
+    }
+    return (await res.json()) as PreviewResult;
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    checkReauthNeeded(res.status, data);
-    return null;
-  }
-  return res.json();
 }
 
 export type PreviewStatus =
@@ -234,19 +264,23 @@ export async function revertDraft(targetSha: string): Promise<RevertResult> {
   return { ok: true, headSha: data?.headSha, revertedPaths: data?.revertedPaths };
 }
 
-export async function publishDraft(): Promise<{ ok: boolean; conflict?: boolean; commitSha?: string }> {
-  const res = await fetch('/api/publish', {
-    method: 'POST',
-    headers: { 'X-CSRF-Token': getCsrfToken() },
+export function publishDraft(): Promise<{ ok: boolean; conflict?: boolean; commitSha?: string }> {
+  // Queued behind any in-flight content save (a blur save already enqueued
+  // lands before the publish).
+  return serializeWrite(async (): Promise<{ ok: boolean; conflict?: boolean; commitSha?: string }> => {
+    const res = await fetch('/api/publish', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': getCsrfToken() },
+    });
+    if (res.status === 409) return { ok: false, conflict: true };
+    if (!res.ok) {
+      const data = await parseJsonSafe<{ error?: string; action?: string }>(res);
+      checkReauthNeeded(res.status, data);
+      return { ok: false };
+    }
+    const data = await res.json();
+    return { ok: true, commitSha: data.commitSha };
   });
-  if (res.status === 409) return { ok: false, conflict: true };
-  if (!res.ok) {
-    const data = await parseJsonSafe<{ error?: string; action?: string }>(res);
-    checkReauthNeeded(res.status, data);
-    return { ok: false };
-  }
-  const data = await res.json();
-  return { ok: true, commitSha: data.commitSha };
 }
 
 export async function logoutAndRedirect(): Promise<void> {
@@ -375,6 +409,27 @@ export function statusLabel(status: SaveStatus): string {
 const unsavedAreas = new Set<number>();
 let autosaverIdSeq = 0;
 
+// tech-lead-20261022T122044 D2: the toolbar shows ONE status for the whole
+// page, so it must be the worst across every autosaver rather than the last
+// event (a "Saved" from one area must not hide another's "Unsaved changes").
+const autosaverStatus = new Map<number, SaveStatus>();
+const STATUS_SEVERITY: Record<SaveStatus, number> = {
+  idle: 0,
+  saved: 1,
+  saving: 2,
+  dirty: 3,
+  retrying: 4,
+  error: 5,
+};
+
+function worstStatus(): SaveStatus {
+  let worst: SaveStatus = 'idle';
+  for (const s of autosaverStatus.values()) {
+    if (STATUS_SEVERITY[s] > STATUS_SEVERITY[worst]) worst = s;
+  }
+  return worst;
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', (event) => {
     if (unsavedAreas.size === 0) return;
@@ -485,9 +540,11 @@ export function makeAutosaver({
     } else {
       unsavedAreas.add(id);
     }
+    autosaverStatus.set(id, next);
     if (opts?.silent) return;
+    const worst = worstStatus();
     window.dispatchEvent(
-      new CustomEvent('editor:area-status', { detail: { status: next, label: statusLabel(next) } })
+      new CustomEvent('editor:area-status', { detail: { status: worst, label: statusLabel(worst) } })
     );
   }
 

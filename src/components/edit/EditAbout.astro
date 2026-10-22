@@ -50,7 +50,7 @@ const { about } = Astro.props;
 </script>
 
 <script>
-  import { getCsrfToken, makeAutosaver, saveArea } from '../../lib/editor/client';
+  import { getCsrfToken, makeAutosaver, saveArea, serializeWrite } from '../../lib/editor/client';
   import type { SaveResult } from '../../lib/editor/client';
   import { wireField } from '../../lib/editor/history';
 
@@ -219,11 +219,14 @@ const { about } = Astro.props;
         setControlsDisabled(true);
         try {
           const contentBase64 = await fileToBase64(file);
-          const res = await fetch('/api/upload/about-image', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-            body: JSON.stringify({ contentBase64 }),
-          });
+          // Queued behind any in-flight content save (page-global write queue).
+          const res = await serializeWrite(() =>
+            fetch('/api/upload/about-image', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+              body: JSON.stringify({ contentBase64 }),
+            })
+          );
           if (!res.ok) {
             let data: { error?: string; action?: string } | null = null;
             try {
