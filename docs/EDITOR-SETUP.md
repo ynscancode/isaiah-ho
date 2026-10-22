@@ -127,16 +127,21 @@ ever holds placeholder values — if you ever edit that file, keep it that way.
    still logs you in, but drops you on the normal public homepage afterward
    instead of the editor; you'd then navigate to `/edit` yourself. Bookmarking the
    `redirect_to=/edit` version is the more convenient entry point.)
-2. **The edit view:** once logged in, the site's editable pages mirror the public
-   URL structure under `/edit`:
-   - `/edit` — home hero
-   - `/edit/about` — about page
-   - `/edit/contact` — contact page
-   - `/edit/projects` — projects list
-   - `/edit/experience` — experience list
-   - `/edit/blog` — blog post list
+2. **The edit view:** once logged in, `/edit` is one continuous-scroll page that
+   mirrors the public homepage, in the same order: Hero, About, Experience,
+   Projects, Writing (the blog post list: add, remove, open posts), then Contact
+   and the footer. A collapsed "Highlights (not shown on the public site)" panel
+   sits right after the Hero. The editor header's links jump to sections on that
+   page (`#about`, `#experience`, `#projects`, `#writing`, `#contact` — the same
+   anchors as the public site). Three things remain separate pages:
    - `/edit/blog/new` — create a new post
    - `/edit/blog/<slug>` — edit an existing post
+   - `/edit/history` — version history (linked from the header)
+
+   The old per-section URLs (`/edit/about`, `/edit/experience`, `/edit/projects`,
+   `/edit/contact`, `/edit/blog`) redirect to the matching section of `/edit`
+   (e.g. `/edit/blog` goes to `/edit#writing`) when you're signed in; without a
+   session they return the usual generic 404.
 3. **Edit:** click into a heading, paragraph, or field to edit it in place (most
    text fields are directly click-and-type on the live-styled page). Link fields
    (CTA hrefs, project/experience links, contact URLs) use a small "edit" button
@@ -145,8 +150,10 @@ ever holds placeholder values — if you ever edit that file, keep it that way.
    editor rather than inline click-to-type, since a blog post's body is raw
    Markdown, not the rendered page text.
 4. **What's editable (MVP scope):**
-   - **Hero (home)** — eyebrow text, headline, lede paragraph, both CTA buttons'
-     label and link.
+   - **Hero (home)** — headline and intro text. The hero's "Say hello" and
+     LinkedIn buttons are not edited here; they come from the Contact links.
+     (The eyebrow and CTA fields are no longer shown on the public site; the
+     editor keeps their saved values unchanged.)
    - **About** — the lede and body paragraphs, edited as one block (not
      individually add/remove-able in this MVP).
    - **Contact** — the lede, plus email/LinkedIn/GitHub. Each of the three can be
@@ -157,13 +164,16 @@ ever holds placeholder values — if you ever edit that file, keep it that way.
    - **Blog** — full add/remove/edit: title, description, date, tags, draft
      toggle, and body.
    - Not editable here (by design — see the product-owner scope note on the team
-     board): the positioning-matrix diagram on the hero, nav labels, site-wide
+     board): the "Singapore" live-time line in the hero, nav labels, site-wide
      title, design tokens/colors, and page layout/structure. These require a code
      change, not the editor.
 5. **Save to draft:** click **Save to draft** in the bottom toolbar, or just wait —
    most fields autosave a couple of seconds after you stop typing. The toolbar's
    status text shows whether there are unsaved changes, a save in progress, or a
-   save error.
+   save error. Because all sections share one page, the button saves only the
+   sections that have unsaved changes, and the status line shows the most
+   important state across all of them (for example "Unsaved changes" if any one
+   section is dirty, and an error takes precedence over everything else).
 6. **Preview:** click **Preview** to get a link to the draft branch's Vercel
    preview deployment — this is the actual site rendered with your unpublished
    changes, safe to check before anyone else sees them. If nothing has been saved
@@ -224,7 +234,8 @@ a broken/empty link. Clearing a filled-in value back out returns it to that
   origin you're logging in from (see §2a — production and preview origins each
   need their own registered callback URL), or `GITHUB_OAUTH_CLIENT_ID` /
   `GITHUB_OAUTH_CLIENT_SECRET` don't match what's registered.
-- **`/edit` (or any `/edit/*` page) 404s even though you're logged in:** the
+- **`/edit` (or any `/edit/*` page, including the old `/edit/about`-style URLs that
+  normally redirect) 404s even though you're logged in:** the
   session cookie may have expired (sessions last about 8 hours) — log in again at
   `/api/auth/login`. If it persists, double-check `SESSION_SECRET` is set and
   identical between the app and however it was deployed (a value change
