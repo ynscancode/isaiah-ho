@@ -145,7 +145,7 @@ const heroHidden = {
 
 <script>
   import { makeAutosaver, saveArea, sanitizeHeadlineHtml, setPath } from '../../lib/editor/client';
-  import { commit, register } from '../../lib/editor/history';
+  import { wireField } from '../../lib/editor/history';
   import { getEmptyStatesStore } from '../../lib/editor/emptyStatesStore';
   import type {
     HighlightRef,
@@ -208,16 +208,6 @@ const heroHidden = {
       return el.tagName === 'H1' ? sanitizeHeadlineHtml(el.innerHTML) : el.textContent ?? '';
     }
 
-    function applyEl(el: HTMLElement, path: string, value: string) {
-      if (el.tagName === 'H1') {
-        el.innerHTML = value;
-      } else {
-        el.textContent = value;
-      }
-      setPath(working as unknown as Record<string, unknown>, path, value);
-      void autosaver.flush(); // undo/redo apply — no following blur, must commit now
-    }
-
     container.querySelectorAll<HTMLElement>('[data-editable]').forEach((el) => {
       // The CTA labels are real <a href> elements made contenteditable —
       // prevent a click from navigating away mid-edit.
@@ -228,10 +218,24 @@ const heroHidden = {
       if (!path) return;
       const historyId = `home:${path}`;
 
-      register({
+      // wireField (not bare register) so a focused, not-yet-blurred hero edit
+      // is known to commitActive() before Undo/Redo (KB-0032). Its blur
+      // listener (commit) is registered first; the flush below fires after.
+      wireField({
         id: historyId,
-        read: () => readEl(el),
-        apply: (value) => applyEl(el, path, value),
+        el,
+        getValue: () => readEl(el),
+        setValue: (value) => {
+          if (el.tagName === 'H1') {
+            el.innerHTML = value;
+          } else {
+            el.textContent = value;
+          }
+        },
+        onApply: (value) => {
+          setPath(working as unknown as Record<string, unknown>, path, value);
+          void autosaver.flush(); // undo/redo apply — no following blur, must commit now
+        },
       });
 
       el.addEventListener('input', () => {
@@ -240,7 +244,6 @@ const heroHidden = {
         autosaver.markDirty();
       });
       el.addEventListener('blur', () => {
-        commit(historyId);
         void autosaver.flushIfDirty();
       });
     });
