@@ -7,26 +7,25 @@
 // was reached legitimately (defense in depth, same generic response either
 // way — indistinguishable from a genuinely missing route per KB-0007).
 //
-// URL scheme (mirrors the public site's own routes):
-//   /edit                -> home (hero)
-//   /edit/about           -> about
-//   /edit/contact         -> contact
-//   /edit/projects        -> projects collection
-//   /edit/experience      -> experience collection
-//   /edit/blog             -> blog post list (add/remove)
-//   /edit/blog/new          -> create a new post
-//   /edit/blog/<slug>       -> edit an existing post
+// URL scheme:
+//   /edit                 -> ONE continuous-scroll page mirroring the public
+//                            homepage: hero, About, Experience, Projects,
+//                            Writing (blog list), Contact (anchors #about,
+//                            #experience, #projects, #writing, #contact)
+//   /edit/about|experience|projects|contact|blog
+//                         -> 302 to the matching /edit#anchor (old bookmarks;
+//                            sits AFTER the session check, so unauthenticated
+//                            requests still get the generic 404)
+//   /edit/history         -> version history
+//   /edit/blog/new        -> create a new post
+//   /edit/blog/<slug>     -> edit an existing post
 export const prerender = false;
 
 import { loadSiteJson, loadCollectionJson, loadBlogList, loadBlogPost, type ContentSource } from '../../lib/draftContent';
 import EditLayout from '../../layouts/EditLayout.astro';
 import { isPersistableContactValue } from '../../lib/contactValue';
 import EditorHarness from '../../components/EditorHarness.astro';
-import EditHome from '../../components/edit/EditHome.astro';
-import EditAbout from '../../components/edit/EditAbout.astro';
-import EditContact from '../../components/edit/EditContact.astro';
-import EditCollection from '../../components/edit/EditCollection.astro';
-import EditBlogList from '../../components/edit/EditBlogList.astro';
+import EditSite from '../../components/edit/EditSite.astro';
 import EditBlogPost from '../../components/edit/EditBlogPost.astro';
 import EditHistory from '../../components/edit/EditHistory.astro';
 
@@ -44,6 +43,19 @@ if (!Astro.locals.session) {
 const rawPath = Astro.params.path ?? '';
 const segments = rawPath.split('/').filter(Boolean);
 const [area, sub] = segments;
+
+// Old per-section URLs -> anchors on the single page. Reached only with a
+// valid session (checked above); runs before any load.
+const LEGACY_ANCHORS: Record<string, string> = {
+  about: 'about',
+  experience: 'experience',
+  projects: 'projects',
+  contact: 'contact',
+  blog: 'writing',
+};
+if (segments.length === 1 && Object.hasOwn(LEGACY_ANCHORS, segments[0])) {
+  return Astro.redirect('/edit#' + LEGACY_ANCHORS[segments[0]], 302);
+}
 
 let pageTitle = 'Edit';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- discriminated
@@ -82,21 +94,25 @@ function emptyStatesFrom(siteData: Record<string, any>) {
 }
 
 if (segments.length === 0) {
-  // Highlights (tech-lead-20260720T113459Z section 5): the "add" pool and
-  // the Selected-row title resolution must read at the SAME draft freshness
-  // the editor writes at — otherwise the pool/titles here could disagree
-  // with what a save actually persists (the ARCH-0010/0020 write-only
-  // class). Load concurrently; this view didn't load collections before.
-  const [siteJson, projectsResult, blogResult] = await Promise.all([
+  // ONE concurrent round of reads for the whole page (D2: load only what is
+  // needed). Highlights' pools derive from the SAME results the page edits
+  // (KB-0020: reads and writes resolve to the same authority/freshness).
+  const [siteJson, projectsResult, experienceResult, blogResult] = await Promise.all([
     loadSiteJson(),
     loadCollectionJson('projects'),
+    loadCollectionJson('experience'),
     loadBlogList(),
   ]);
-  contentSource = siteJson.source;
+  // WORST source of the four (build > master > draft): if ANY read fell back
+  // to GitHub master/build, the whole page renders read-only.
+  const SOURCE_RANK: Record<ContentSource, number> = { draft: 0, master: 1, build: 2 };
+  contentSource = [siteJson.source, projectsResult.source, experienceResult.source, blogResult.source].reduce(
+    (worst, next) => (SOURCE_RANK[next] > SOURCE_RANK[worst] ? next : worst)
+  );
   const siteData = (siteJson.data ?? {}) as Record<string, any>;
   const hero = siteData.home?.hero;
-  if (!hero) return notFound();
-  pageTitle = 'Edit — Home';
+  if (!hero || !siteData.about || !siteData.contact) return notFound();
+  pageTitle = 'Edit';
   const highlights = Array.isArray(siteData.home?.highlights) ? siteData.home.highlights : [];
   const projectsPool = (projectsResult.data as any[]).map((p) => ({
     slug: p.slug,
@@ -115,8 +131,9 @@ if (segments.length === 0) {
   const usable = (type: 'email' | 'linkedin') =>
     contactLinks.find((l) => l.type === type && l.value !== '' && isPersistableContactValue(l.type, l.value));
   const linkedin = usable('linkedin');
+  const sorted = [...blogResult.data].sort((a, b) => b.date.localeCompare(a.date));
   body = {
-    view: 'home',
+    view: 'site',
     hero,
     highlights,
     projectsPool,
@@ -127,67 +144,15 @@ if (segments.length === 0) {
       linkedinUrl: linkedin?.value,
       linkedinLabel: linkedin?.label?.trim() || 'LinkedIn',
     },
-  };
-} else if (area === 'about' && !sub) {
-  const siteJson = await loadSiteJson();
-  contentSource = siteJson.source;
-  const siteData = (siteJson.data ?? {}) as Record<string, any>;
-  const about = siteData.about;
-  if (!about) return notFound();
-  pageTitle = 'Edit — About';
-  body = {
-    view: 'about',
-    about: { body: about.body ?? '', image: about.image ?? null },
-  };
-} else if (area === 'contact' && !sub) {
-  const siteJson = await loadSiteJson();
-  contentSource = siteJson.source;
-  const siteData = (siteJson.data ?? {}) as Record<string, any>;
-  const contact = siteData.contact;
-  if (!contact) return notFound();
-  pageTitle = 'Edit — Contact';
-  body = {
-    view: 'contact',
-    contact: {
-      lede: contact.lede ?? '',
-      links: contact.links ?? [],
+    about: { body: siteData.about.body ?? '', image: siteData.about.image ?? null },
+    experience: experienceResult.data,
+    projects: projectsResult.data,
+    // KB-0036: order comes from site.json `ordering`, per collection; absent
+    // entry reads as [].
+    categoryOrder: {
+      experience: siteData.ordering?.categoryOrder?.experience ?? [],
+      projects: siteData.ordering?.categoryOrder?.projects ?? [],
     },
-    emptyStates: emptyStatesFrom(siteData),
-  };
-} else if (area === 'projects' && !sub) {
-  const [siteJson, result] = await Promise.all([loadSiteJson(), loadCollectionJson('projects')]);
-  const siteData = (siteJson.data ?? {}) as Record<string, any>;
-  contentSource = result.source;
-  pageTitle = 'Edit — Projects';
-  body = {
-    view: 'projects',
-    entries: result.data,
-    emptyStates: emptyStatesFrom(siteData),
-    // tech-lead-20260729T162747 §3: no new read — `siteData` is already in
-    // hand. Absent `ordering` entry reads as [] (KB-0010 base case).
-    categoryOrder: siteData.ordering?.categoryOrder?.projects ?? [],
-  };
-} else if (area === 'experience' && !sub) {
-  const [siteJson, result] = await Promise.all([loadSiteJson(), loadCollectionJson('experience')]);
-  const siteData = (siteJson.data ?? {}) as Record<string, any>;
-  contentSource = result.source;
-  pageTitle = 'Edit — Experience';
-  body = {
-    view: 'experience',
-    entries: result.data,
-    emptyStates: emptyStatesFrom(siteData),
-    // tech-lead-20260729T162747 §3: no new read — `siteData` is already in
-    // hand. Absent `ordering` entry reads as [] (KB-0010 base case).
-    categoryOrder: siteData.ordering?.categoryOrder?.experience ?? [],
-  };
-} else if (area === 'blog' && !sub) {
-  const [siteJson, result] = await Promise.all([loadSiteJson(), loadBlogList()]);
-  const siteData = (siteJson.data ?? {}) as Record<string, any>;
-  contentSource = result.source;
-  const sorted = [...result.data].sort((a, b) => b.date.localeCompare(a.date));
-  pageTitle = 'Edit — Blog';
-  body = {
-    view: 'blog-list',
     posts: sorted.map((p) => ({
       id: p.slug,
       title: p.title,
@@ -196,7 +161,7 @@ if (segments.length === 0) {
       tags: p.tags,
       draft: p.draft,
     })),
-    emptyStates: emptyStatesFrom(siteData),
+    contact: { lede: siteData.contact.lede ?? '', links: siteData.contact.links ?? [] },
   };
 } else if (area === 'history' && !sub) {
   // Version history is fetched client-side from /api/draft/history (see
@@ -246,26 +211,23 @@ if (segments.length === 0) {
 }
 ---
 
-<EditLayout title={pageTitle}>
-  {body?.view === 'home' && (
-    <EditHome
+<EditLayout title={pageTitle} footer={body?.view !== 'site'}>
+  {body?.view === 'site' && (
+    <EditSite
       hero={body.hero}
       highlights={body.highlights}
       projectsPool={body.projectsPool}
       blogPool={body.blogPool}
-      emptyStates={body.emptyStates}
       actions={body.actions}
+      about={body.about}
+      experience={body.experience}
+      projects={body.projects}
+      categoryOrder={body.categoryOrder}
+      posts={body.posts}
+      contact={body.contact}
+      emptyStates={body.emptyStates}
     />
   )}
-  {body?.view === 'about' && <EditAbout about={body.about} />}
-  {body?.view === 'contact' && <EditContact contact={body.contact} emptyStates={body.emptyStates} />}
-  {body?.view === 'projects' && (
-    <EditCollection area="projects" entries={body.entries} emptyStates={body.emptyStates} categoryOrder={body.categoryOrder} />
-  )}
-  {body?.view === 'experience' && (
-    <EditCollection area="experience" entries={body.entries} emptyStates={body.emptyStates} categoryOrder={body.categoryOrder} />
-  )}
-  {body?.view === 'blog-list' && <EditBlogList posts={body.posts} emptyStates={body.emptyStates} />}
   {body?.view === 'blog-post' && <EditBlogPost post={body.post} isNew={body.isNew} />}
   {body?.view === 'history' && <EditHistory />}
 

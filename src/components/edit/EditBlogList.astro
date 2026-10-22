@@ -1,8 +1,7 @@
 ---
-// Mirrors src/pages/blog/index.astro — keep class structure in sync.
-// Editable twin of the blog index: each post links to its editor page and has
+// Mirrors src/components/site/WritingBand.astro — keep class structure in sync.
+// Editable twin of the Writing band: each post links to its editor page and has
 // a Delete control. No <style> block (editor.css is global).
-import EditHeader from './EditHeader.astro';
 import { formatPostDate } from '../../lib/eyebrow';
 import type { EmptyStates } from '../../lib/editor/emptyStatesStore';
 
@@ -14,18 +13,20 @@ export type Props = {
 const { posts, emptyStates } = Astro.props;
 ---
 
-<EditHeader active="blog" />
-<main id="main-content" class="wrap">
-  <section class="section section--first" aria-labelledby="blog-h">
-    <h1 id="blog-h" class="h-section">Blog</h1>
-    <a class="editor-add-btn" href="/edit/blog/new">+ New post</a>
-    {posts.length === 0 ? (
-      <>
-        <p class="empty-note editor-empty-preview">{emptyStates.blog || 'Coming soon.'}</p>
-        <p class="editor-note">No posts yet — use "New post" above.</p>
-      </>
-    ) : (
-      <ul class="posts posts--paper" role="list">
+<div class="dark inkband" id="writing">
+  <section class="wrap writing" aria-labelledby="writing-h">
+    <div class="writing__intro">
+      <h2 id="writing-h" class="h-section">Writing</h2>
+      {posts.length === 0 && (
+        <>
+          <p class="note editor-empty-preview">{emptyStates.blog || 'Coming soon.'}</p>
+          <p class="editor-note">No posts yet — use "New post" below.</p>
+        </>
+      )}
+      <a class="editor-add-btn" href="/edit/blog/new">+ New post</a>
+    </div>
+    {posts.length > 0 && (
+      <ul class="posts" role="list">
         {posts.map((post) => (
           <li class="card-slot-wrap" data-post-id={post.id}>
             <a class="title u" href={`/edit/blog/${post.id}`}>{post.title}</a>
@@ -43,7 +44,7 @@ const { posts, emptyStates } = Astro.props;
       <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
     </div>
   </section>
-</main>
+</div>
 
 <script define:vars={{ emptyStates }}>
   window.__editorSeed = window.__editorSeed || {};

@@ -1,0 +1,10 @@
+---
+// Mirrors src/components/site/SiteFooter.astro. Rendered inside the Contact
+// floor's slot on /edit, or as its own floor by EditLayout on other pages.
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <span>&copy; {year} Isaiah Ho</span>
+  <span>Editor</span>
+</footer>

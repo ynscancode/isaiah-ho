@@ -22,10 +22,10 @@ export type Props = {
 const { post, isNew } = Astro.props;
 ---
 
-<EditHeader active="blog" />
+<EditHeader />
 <main id="main-content" class="wrap">
   <article class="section section--first" data-editable-area="blog" data-is-new={isNew ? 'true' : 'false'} data-slug={post.slug}>
-    <a class="back u" href="/edit/blog">&larr; Back to posts</a>
+    <a class="back u" href="/edit#writing">&larr; Back to posts</a>
     <h1 class="visually-hidden">{isNew ? 'New blog post' : `Editing: ${post.title}`}</h1>
 
     <div class="editor-post-meta">

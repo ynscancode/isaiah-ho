@@ -265,9 +265,9 @@ const { contentSource } = Astro.props;
     void logoutAndRedirect();
   });
 
-  // Global rollup: every view's script dispatches `editor:area-status` so the
-  // toolbar can show the worst-case status across all areas on the page
-  // (in practice there is exactly one editable area per /edit/* route).
+  // Global rollup: client.ts dispatches `editor:area-status` with the WORST
+  // status across every autosaver on the page (the combined /edit page has
+  // many), so one area's "Saved" never hides another's "Unsaved changes".
   window.addEventListener('editor:area-status', (event) => {
     const detail = (event as CustomEvent<{ status: string; label: string }>).detail;
     if (!statusText || !detail) return;

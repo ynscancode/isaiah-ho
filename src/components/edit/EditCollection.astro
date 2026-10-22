@@ -1,5 +1,4 @@
 ---
-import EditHeader from './EditHeader.astro';
 import EditableExperienceRow from './EditableExperienceRow.astro';
 import EditableProjectCard from './EditableProjectCard.astro';
 import { groupByCategory } from '../../lib/experienceGroups';
@@ -48,14 +47,12 @@ const showSubheads = groups.length > 1;
 const reorderableGroups = groups.filter((group) => !group.isPinned);
 ---
 
-<EditHeader active={area} />
-<main id="main-content" class="wrap">
-  <section id={area} data-collection-root={area} class="section section--first" aria-labelledby={`${area}-h`}>
+  <section id={area} data-collection-root={area} class="section" aria-labelledby={`${area}-h`}>
     {isExperience ? (
-      <h1 id="experience-h" class="h-section">Experience</h1>
+      <h2 id="experience-h" class="h-section">Experience</h2>
     ) : (
       <>
-        <div class="projects__head"><h1 id="projects-h" class="h-section">Projects</h1></div>
+        <div class="projects__head"><h2 id="projects-h" class="h-section">Projects</h2></div>
         <p class="editor-note">Category order here is the filter-chip order on the site; cards show in this order in one grid.</p>
       </>
     )}
@@ -72,7 +69,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
               data-pinned-group={group.isPinned ? 'true' : undefined}
             >
               <div class="group-subhead-row">
-                <h2 class={isExperience ? 'group-subhead' : 'group-subhead chip'} tabindex="-1">{group.category}</h2>
+                <h3 class={isExperience ? 'group-subhead' : 'group-subhead chip'} tabindex="-1">{group.category}</h3>
                 {!group.isPinned && (
                   <span class="group-move-controls">
                     <button
@@ -141,7 +138,7 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
     ) : isExperience ? (
       <div class="exp-groups">
         <div class="exp-group">
-          {groups[0] && <h2 class="group-subhead">{groups[0].category}</h2>}
+          {groups[0] && <h3 class="group-subhead">{groups[0].category}</h3>}
           <div data-editable-area="experience" data-collection-list>
             {entries.map((entry) => (
               <EditableExperienceRow
@@ -191,7 +188,6 @@ const reorderableGroups = groups.filter((group) => !group.isPinned);
       <p class="editor-note">Shown on the public page in place of the list when this section has zero entries.</p>
     </div>
   </section>
-</main>
 
 <script define:vars={{ area, entries, emptyStates, categoryOrder }}>
   // define:vars serializes `entries`/`area`/`emptyStates`/`categoryOrder`

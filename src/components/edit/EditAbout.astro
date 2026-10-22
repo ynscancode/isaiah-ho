@@ -3,7 +3,6 @@
 // Editable twin: the body is a textarea (paragraphs round-trip as plain text)
 // and the photo column carries the upload/remove controls. No <style> block:
 // editor.css is global, so JS-built nodes (the "No photo" box) are styled too.
-import EditHeader from './EditHeader.astro';
 
 export type Props = {
   about: { body: string; image: string | null };
@@ -12,12 +11,10 @@ export type Props = {
 const { about } = Astro.props;
 ---
 
-<EditHeader active="about" />
-<main id="main-content" class="wrap">
-  <section class="section section--first" aria-labelledby="about-h">
+<section id="about" class="section section--first" aria-labelledby="about-h">
     <div class="about">
       <div class="about__copy">
-        <h1 id="about-h" class="h-section">About</h1>
+        <h2 id="about-h" class="h-section">About</h2>
         <label class="visually-hidden" for="about-body">About text</label>
         <div class="body" data-editable-area="about">
           <textarea id="about-body" class="editor-textarea editor-textarea--body" data-editable="body">{about.body}</textarea>
@@ -42,7 +39,6 @@ const { about } = Astro.props;
       </div>
     </div>
   </section>
-</main>
 
 <script define:vars={{ aboutImage: about.image }}>
   window.__editorSeed = window.__editorSeed || {};

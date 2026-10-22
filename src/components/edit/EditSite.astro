@@ -1,0 +1,55 @@
+---
+// The single continuous-scroll editor body, in the SAME order as the public
+// src/pages/index.astro: header floor + hero, (collapsed Highlights panel),
+// About, Experience, Projects, the Writing band, and the Contact floor with
+// the footer. Used by both the /edit route and the dev-repro harness.
+// Imports ONLY src/components/edit/* — never src/components/site/* (KB-0042:
+// a shared import graph could rename the public build's chunks).
+import EditHome, { type Props as HomeProps } from './EditHome.astro';
+import EditAbout, { type Props as AboutProps } from './EditAbout.astro';
+import EditCollection, { type Props as CollectionProps } from './EditCollection.astro';
+import EditBlogList, { type Props as BlogProps } from './EditBlogList.astro';
+import EditContact, { type Props as ContactProps } from './EditContact.astro';
+import EditFooter from './EditFooter.astro';
+import type { EmptyStates } from '../../lib/editor/emptyStatesStore';
+
+type Entries = CollectionProps['entries'];
+
+export type Props = {
+  hero: HomeProps['hero'];
+  highlights: HomeProps['highlights'];
+  projectsPool: HomeProps['projectsPool'];
+  blogPool: HomeProps['blogPool'];
+  actions: HomeProps['actions'];
+  about: AboutProps['about'];
+  experience: Entries;
+  projects: Entries;
+  /** Canonical per-collection category order (site.json `ordering`). */
+  categoryOrder: { experience: string[]; projects: string[] };
+  posts: BlogProps['posts'];
+  contact: ContactProps['contact'];
+  /** The ONE full 5-key record; every view seeds the same object. */
+  emptyStates: EmptyStates;
+};
+
+const { hero, highlights, projectsPool, blogPool, actions, about, experience, projects, categoryOrder, posts, contact, emptyStates } =
+  Astro.props;
+---
+
+<EditHome
+  hero={hero}
+  highlights={highlights}
+  projectsPool={projectsPool}
+  blogPool={blogPool}
+  emptyStates={emptyStates}
+  actions={actions}
+/>
+<main id="main-content" class="wrap">
+  <EditAbout about={about} />
+  <EditCollection area="experience" entries={experience} emptyStates={emptyStates} categoryOrder={categoryOrder.experience} />
+  <EditCollection area="projects" entries={projects} emptyStates={emptyStates} categoryOrder={categoryOrder.projects} />
+</main>
+<EditBlogList posts={posts} emptyStates={emptyStates} />
+<EditContact contact={contact} emptyStates={emptyStates}>
+  <EditFooter />
+</EditContact>

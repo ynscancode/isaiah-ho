@@ -5,7 +5,6 @@
 // email / LinkedIn, same rule as src/pages/index.astro), and the link rows
 // are form fields. No <style> block: editor.css is global, so the rows the
 // client script builds with innerHTML are styled too.
-import EditHeader from './EditHeader.astro';
 import { isPersistableContactValue } from '../../lib/contactValue';
 import type { EmptyStates } from '../../lib/editor/emptyStatesStore';
 
@@ -30,13 +29,11 @@ const linkedin = usable('linkedin');
 const linkedinLabel = linkedin?.label?.trim() || 'LinkedIn';
 ---
 
-<EditHeader active="contact" />
-<main id="main-content">
   <div class="dark floor" id="contact">
     <div class="wrap">
       <section class="contact" aria-labelledby="contact-h">
         <p class="label">Contact</p>
-        <h1 id="contact-h" class="h-contact" contenteditable="true" data-editable="lede" data-editable-area="contact" data-placeholder="Your contact headline">{contact.lede}</h1>
+        <h2 id="contact-h" class="h-contact" contenteditable="true" data-editable="lede" data-editable-area="contact" data-placeholder="Your contact headline">{contact.lede}</h2>
 
         {email || linkedin ? (
           <div class="contact__actions">
@@ -85,9 +82,9 @@ const linkedinLabel = linkedin?.label?.trim() || 'LinkedIn';
           <p class="editor-note">Shown on the public page in place of the contact buttons when there are no usable links.</p>
         </div>
       </section>
-    </div>
+    <slot />
   </div>
-</main>
+</div>
 
 <script define:vars={{ links: contact.links, emptyStates }}>
   window.__editorSeed = window.__editorSeed || {};

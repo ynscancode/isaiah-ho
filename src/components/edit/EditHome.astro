@@ -69,7 +69,7 @@ const heroHidden = {
 ---
 
 <div data-editable-area="home">
-  <EditHeader active="home">
+  <EditHeader home>
     <section class="hero" aria-label="Introduction">
       <div class="hero__copy">
         <p class="hero__time">Singapore<span class="editor-hint">, live local time on the site</span></p>
@@ -78,14 +78,14 @@ const heroHidden = {
         <div class="hero__actions">
           {actions.email && <span class="pill pill--accent"><span>Say hello</span></span>}
           {actions.linkedinUrl && <span class="pill pill--outline"><span>{actions.linkedinLabel}</span></span>}
-          <a class="u" href="/edit/contact">These buttons come from your Contact links</a>
+          <a class="u" href="#contact">These buttons come from your Contact links</a>
         </div>
       </div>
     </section>
   </EditHeader>
 
-  <main id="main-content" class="wrap">
-    <section class="section section--first" aria-label="Homepage settings">
+  <aside class="wrap editor-aside" aria-label="Homepage highlights, not shown on the public site">
+    <section class="section section--first">
       <details class="editor-panel">
         <summary>Highlights (not shown on the public site)</summary>
         <p class="editor-note">Saved with your draft, but the current site design doesn't display these.</p>
@@ -127,7 +127,7 @@ const heroHidden = {
         </div>
       </details>
     </section>
-  </main>
+  </aside>
 </div>
 
 <script define:vars={{ seedHighlights: highlights, seedProjectsPool: projectsPool, seedBlogPool: blogPool, seedEmptyStates: resolvedEmptyStates, seedHeroHidden: heroHidden }}>

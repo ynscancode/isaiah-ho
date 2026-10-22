@@ -587,6 +587,19 @@ html[data-editor-readonly="true"] [contenteditable="true"] {
 /* ---------- Blog ---------- */
 .editor-root .editor-draft { font-style: italic; color: var(--floor); }
 .editor-root .posts--paper .card-slot-wrap .card-remove-btn { margin-top: 4px; }
+/* Writing band (dark ink ground): post rows mirror WritingBand; the editor
+   adds a description line + Delete control, and the band hosts the empty-state
+   field and "+ New post". */
+.editor-root .inkband .posts .card-slot-wrap .card-remove-btn { margin-top: 4px; }
+.editor-root .inkband .posts .desc {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 16px;
+  color: var(--paper-muted-ink);
+}
+.editor-root .inkband .writing__intro .editor-add-btn { margin-top: 18px; }
+.editor-root .inkband .writing > .editor-field { flex-basis: 100%; }
+.editor-root .editor-aside { padding-bottom: 0; }
 .editor-root .editor-post-meta {
   display: flex;
   flex-wrap: wrap;
