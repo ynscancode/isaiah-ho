@@ -265,10 +265,21 @@ html[data-editor-readonly="true"] [contenteditable="true"] {
 }
 .editor-root .editor-toolbar-status {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 10px;
+  gap: 2px 10px;
+  max-width: 100%;
 }
 .editor-root .editor-toolbar-status strong { font-weight: 500; }
+/* Reserve the longest label's width ("Can't reach GitHub — retrying…", 30
+   chars; see statusLabel in lib/editor/client.ts) so the status block is the
+   same width for every label. The actions sit after it in the same wrapping
+   row, and a label change mid-click (mousedown blurs a field -> autosave ->
+   "Saving…") must never shift them or the click is lost. */
+.editor-root #editor-status-text {
+  min-width: 31ch;
+  max-width: 100%;
+}
 .editor-root #editor-status-text[data-status="dirty"],
 .editor-root #editor-status-text[data-status="retrying"] { color: var(--accent); }
 .editor-root #editor-status-text[data-status="saving"] { color: var(--paper-muted-ink); }
@@ -586,6 +597,8 @@ html[data-editor-readonly="true"] [contenteditable="true"] {
 
 /* ---------- Blog ---------- */
 .editor-root .editor-draft { font-style: italic; color: var(--floor); }
+/* In the dark Writing band --floor (oxblood) is ~1.1:1 on --ink; --accent is 9.52:1. */
+.editor-root .inkband .editor-draft { color: var(--accent); }
 .editor-root .posts--paper .card-slot-wrap .card-remove-btn { margin-top: 4px; }
 /* Writing band (dark ink ground): post rows mirror WritingBand; the editor
    adds a description line + Delete control, and the band hosts the empty-state
