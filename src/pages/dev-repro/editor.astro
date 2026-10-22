@@ -3,25 +3,22 @@
 // `astro dev` (literal import.meta.env.DEV gate, KB-0018) and emits nothing
 // into the static build output.
 //
-// It renders exactly what /edit renders: EditLayout + the real Edit*
-// component with fixture props + the real EditorHarness toolbar, so every
-// view looks and behaves pixel-for-pixel like the real editor. Pick a view
-// with `?view=`; `?view=index` lists them all. One collection per page (the
-// collection script uses document.querySelector('[data-collection-list]')).
+// It renders exactly what /edit renders: EditLayout + the real EditSite
+// (the single continuous-scroll editor) with fixture props + the real
+// EditorHarness toolbar. Pick a view with `?view=`; `?view=index` lists them.
 //
-// Saves hit the REAL /api. With no session the middleware answers a generic
-// 404, so saveArea returns { ok:false, error:'http_404' } and the toolbar
-// shows the failure state — expected, and how failure routing is checked.
-// Nothing is stubbed except the `history-fixture` GET shim below.
+// Saves hit the REAL /api by default. With no session the middleware answers
+// a generic 404, so saveArea returns { ok:false, error:'http_404' } and the
+// toolbar shows the failure state — expected, and how failure routing is
+// checked. Opt-in DEV scaffolding (never default): `history-fixture` shims the
+// history GET; `&stub=ok` shims the mutating /api calls with a ~700ms 200 and
+// logs each to window.__writeLog ({method, path, body, t0, t1}) so QA can
+// assert write ordering/coalescing in a real browser.
 export const prerender = false;
 
 import EditLayout from '../../layouts/EditLayout.astro';
 import EditorHarness from '../../components/EditorHarness.astro';
-import EditHome from '../../components/edit/EditHome.astro';
-import EditAbout from '../../components/edit/EditAbout.astro';
-import EditContact from '../../components/edit/EditContact.astro';
-import EditCollection from '../../components/edit/EditCollection.astro';
-import EditBlogList from '../../components/edit/EditBlogList.astro';
+import EditSite from '../../components/edit/EditSite.astro';
 import EditBlogPost from '../../components/edit/EditBlogPost.astro';
 import EditHistory from '../../components/edit/EditHistory.astro';
 import * as fx from './_editorFixtures';
@@ -35,21 +32,10 @@ if (!import.meta.env.DEV) {
 
 const VIEWS = [
   'index',
-  'home',
-  'home-noactions',
+  'site',
+  'site-flat',
+  'site-empty',
   'readonly',
-  'about',
-  'about-photo',
-  'contact',
-  'contact-empty',
-  'projects',
-  'projects-flat',
-  'projects-empty',
-  'experience',
-  'experience-flat',
-  'experience-empty',
-  'blog-list',
-  'blog-list-empty',
   'blog-post',
   'blog-new',
   'history',
@@ -66,10 +52,47 @@ if (!(VIEWS as readonly string[]).includes(requested)) {
 }
 const view = requested as View;
 
-const noEmpty = { projects: '', experience: '', blog: '', contact: '', highlights: '' };
 const fullActions = { email: 'hello@example.com', linkedinUrl: 'https://www.linkedin.com/in/example', linkedinLabel: 'LinkedIn' };
 const noActions = { linkedinLabel: 'LinkedIn' };
-const emptyContact = { lede: 'Get in touch.', links: [] };
+
+// Props for every site view, derived from the fixtures.
+const siteBase = {
+  hero: fx.hero,
+  highlights: fx.highlights,
+  projectsPool: fx.projectsPool,
+  blogPool: fx.blogPool,
+  actions: fullActions,
+  about: { body: fx.aboutBody, image: null as string | null },
+  experience: fx.experienceEntries,
+  projects: fx.projectEntries,
+  categoryOrder: { experience: fx.experienceCategoryOrder, projects: fx.projectCategoryOrder },
+  posts: fx.blogPosts,
+  contact: { lede: 'Let us talk about something interesting.', links: fx.contactLinks },
+  emptyStates: fx.emptyStates,
+};
+const siteProps =
+  view === 'site-flat'
+    ? {
+        ...siteBase,
+        about: { body: fx.aboutBody, image: 'src/assets/fixture-photo.jpg' },
+        // one category per collection -> the ungrouped branch for BOTH
+        experience: fx.experienceEntries.slice(0, 2).map((e) => ({ ...e, category: 'Work' })),
+        projects: fx.projectEntries.slice(0, 2).map((e) => ({ ...e, category: 'Research' })),
+        categoryOrder: { experience: [], projects: [] },
+      }
+    : view === 'site-empty'
+      ? {
+          ...siteBase,
+          actions: noActions,
+          highlights: [],
+          experience: [],
+          projects: [],
+          categoryOrder: { experience: [], projects: [] },
+          posts: [],
+          contact: { lede: 'Get in touch.', links: [] },
+        }
+      : siteBase;
+const isSite = view === 'site' || view === 'site-flat' || view === 'site-empty' || view === 'readonly';
 ---
 
 {view === 'index' ? (
@@ -87,12 +110,41 @@ const emptyContact = { lede: 'Get in touch.', links: [] };
     </main>
   </EditLayout>
 ) : (
-  <EditLayout title={`Dev editor harness — ${view}`}>
+  <EditLayout title={`Dev editor harness — ${view}`} footer={!isSite}>
     {Astro.url.searchParams.get('confirm') === 'auto' && (
       <script is:inline>
         // Test scaffolding (DEV-gated page only, opt-in via &confirm=auto):
         // auto-accept window.confirm so automation can drive delete/undo/restore.
         window.confirm = () => true;
+      </script>
+    )}
+    {Astro.url.searchParams.get('stub') === 'ok' && (
+      <script is:inline>
+        // Test scaffolding (DEV-gated page only, opt-in via &stub=ok): answer
+        // the mutating /api calls with a 200 after ~700ms and record each on
+        // window.__writeLog = [{ method, path, body, t0, t1 }]. Everything
+        // else passes through untouched.
+        window.__writeLog = [];
+        const stubRealFetch = window.fetch.bind(window);
+        const STUB_PATHS = ['/api/draft/ensure', '/api/publish', '/api/draft/preview'];
+        window.fetch = (input, init) => {
+          const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+          const method = ((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+          const path = new URL(url, location.href).pathname;
+          const stubbed =
+            (method === 'POST' && (STUB_PATHS.includes(path) || path.startsWith('/api/content/'))) ||
+            (method === 'DELETE' && path.startsWith('/api/content/'));
+          if (!stubbed) return stubRealFetch(input, init);
+          const entry = { method, path, body: (init && init.body) || null, t0: performance.now(), t1: 0 };
+          window.__writeLog.push(entry);
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              entry.t1 = performance.now();
+              const payload = path === '/api/publish' ? { commitSha: 'stub' } : {};
+              resolve(new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }));
+            }, 700);
+          });
+        };
       </script>
     )}
     {view === 'history-fixture' && (
@@ -113,36 +165,7 @@ const emptyContact = { lede: 'Get in touch.', links: [] };
       </script>
     )}
 
-    {(view === 'home' || view === 'home-noactions') && (
-      <EditHome
-        hero={fx.hero}
-        highlights={fx.highlights}
-        projectsPool={fx.projectsPool}
-        blogPool={fx.blogPool}
-        emptyStates={fx.emptyStates}
-        actions={view === 'home' ? fullActions : noActions}
-      />
-    )}
-    {view === 'about' && <EditAbout about={{ body: fx.aboutBody, image: null }} />}
-    {view === 'about-photo' && <EditAbout about={{ body: fx.aboutBody, image: 'src/assets/fixture-photo.jpg' }} />}
-    {view === 'contact' && <EditContact contact={{ lede: 'Let us talk about something interesting.', links: fx.contactLinks }} emptyStates={fx.emptyStates} />}
-    {view === 'contact-empty' && <EditContact contact={emptyContact} emptyStates={fx.emptyStates} />}
-    {view === 'projects' && (
-      <EditCollection area="projects" entries={fx.projectEntries} emptyStates={fx.emptyStates} categoryOrder={fx.projectCategoryOrder} />
-    )}
-    {view === 'projects-flat' && (
-      <EditCollection area="projects" entries={fx.projectEntries.slice(0, 2).map((e) => ({ ...e, category: 'Research' }))} emptyStates={fx.emptyStates} categoryOrder={[]} />
-    )}
-    {view === 'projects-empty' && <EditCollection area="projects" entries={[]} emptyStates={fx.emptyStates} categoryOrder={[]} />}
-    {(view === 'experience' || view === 'readonly') && (
-      <EditCollection area="experience" entries={fx.experienceEntries} emptyStates={fx.emptyStates} categoryOrder={fx.experienceCategoryOrder} />
-    )}
-    {view === 'experience-flat' && (
-      <EditCollection area="experience" entries={fx.experienceEntries.slice(0, 2)} emptyStates={fx.emptyStates} categoryOrder={[]} />
-    )}
-    {view === 'experience-empty' && <EditCollection area="experience" entries={[]} emptyStates={fx.emptyStates} categoryOrder={[]} />}
-    {view === 'blog-list' && <EditBlogList posts={fx.blogPosts} emptyStates={fx.emptyStates} />}
-    {view === 'blog-list-empty' && <EditBlogList posts={[]} emptyStates={noEmpty} />}
+    {isSite && <EditSite {...siteProps} />}
     {view === 'blog-post' && <EditBlogPost post={fx.blogPost} isNew={false} />}
     {view === 'blog-new' && <EditBlogPost post={fx.newBlogPost} isNew={true} />}
     {(view === 'history' || view === 'history-fixture') && <EditHistory />}
